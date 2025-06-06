@@ -1,0 +1,2024 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>偶像卡片系統</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+  <style>
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f9f9f9;
+    }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      flex: 1;
+      min-width: 300px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      color: #4a148c;
+    }
+
+    button {
+      background: #4a148c;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 10px;
+    }
+
+    .role-switcher {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .role-btn {
+      flex: 1;
+      background: #f0f0f0;
+      color: #333;
+      border: 1px solid #ddd;
+      padding: 12px 15px;
+      transition: all 0.3s ease;
+    }
+
+    .role-btn:hover {
+      background: #e0e0e0;
+    }
+
+    .role-active {
+      background: #4a148c;
+      color: white;
+      border-color: #4a148c;
+    }
+
+    .role-active:hover {
+      background: #6a1b9a;
+    }
+
+    .connect-btn {
+      background: #6a1b9a;
+      font-weight: bold;
+      padding: 12px 20px;
+    }
+
+    .connect-btn:hover {
+      background: #8e24aa;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+      font-size: 16px;
+    }
+
+    .status {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 4px;
+    }
+
+    .success {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .error {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    .info {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    table,
+    th,
+    td {
+      border: 1px solid #ddd;
+    }
+
+    th,
+    td {
+      padding: 12px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #4a148c;
+      color: white;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f2f2f2;
+    }
+
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #ddd;
+      margin-bottom: 20px;
+    }
+
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      border-bottom: 3px solid #4a148c;
+      font-weight: bold;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .trade-status {
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 14px;
+      display: inline-block;
+    }
+
+    .status-created {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+
+    .status-buyer-signed {
+      background: #fff3e0;
+      color: #e65100;
+    }
+
+    .status-seller-signed {
+      background: #f1f8e9;
+      color: #558b2f;
+    }
+
+    .status-completed {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #4a148c;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 2s linear infinite;
+      display: inline-block;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    .tabs,
+    .tab-content,
+    .container {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>偶像卡片系統</h1>
+
+  <div class="card" style="margin-bottom: 20px;">
+    <h2>錢包連接</h2>
+    <button id="connectWalletBtn" class="connect-btn">連接錢包</button>
+    <div id="connection-status" class="status info" style="margin-top: 10px;">請連接您的錢包以使用全部功能</div>
+  </div>
+
+  <!-- <div class="card" style="margin-bottom: 20px;">
+    <h2>角色切換</h2>
+    <div class="role-switcher">
+      <button id="role-company" class="role-btn role-active">公司</button>
+      <button id="role-buyer" class="role-btn">普通用戶</button>
+    </div>
+    <div id="role-description" class="status info" style="margin-top: 10px;">
+      當前角色: 公司 - 負責發行卡片和審批卡片綁定請求
+    </div>
+  </div> -->
+
+  <div class="tabs">
+    <div class="tab active" data-tab="purchase">發行卡片</div>
+    <div class="tab" data-tab="myCards">我的卡片</div>
+    <div class="tab" data-tab="market">市場交易</div>
+    <div class="tab" data-tab="admin">管理功能</div>
+  </div>
+
+  <div class="container">
+    <!-- 購買卡片 Tab -->
+    <div id="purchase" class="tab-content active">
+      <!-- 公司角色 -->
+      <div class="role-content company-role">
+        <div class="card">
+          <h2>設置卡片資訊與價格</h2>
+          <input type="text" id="idol-group" placeholder="偶像團體名稱 (e.g., BTS)">
+          <input type="text" id="idol-member" placeholder="成員姓名 (e.g., Jungkook)">
+          <input type="text" id="card-number" placeholder="卡片編號 (e.g., 001)">
+          <input type="number" id="list-price" placeholder="卡片上架價 (ETH)" step="0.001">
+          <input type="text" id="photo-uri" placeholder="照片 URI (e.g., ipfs://xxx)">
+          <input type="number" id="new-price" placeholder="合約內部價格 (ETH)" step="0.001">
+
+          <button id="set-price-btn">設置卡片資訊</button>
+          <div id="set-price-status"></div>
+        </div>
+
+      </div>
+
+      <!-- 普通用戶角色 -->
+      <div class="role-content buyer-role" style="display: none;">
+        <div class="card">
+          <h2>瀏覽可購買卡片</h2>
+          <div id="available-cards-market">
+            <p>載入中...</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>綁定卡片 UID</h2>
+          <input type="text" id="card-uid" placeholder="輸入卡片 UID">
+          <button id="request-card-btn">請求綁定</button>
+          <div id="request-status"></div>
+        </div>
+      </div>
+
+      <!-- 隱藏的狀態區域，用於顯示購買結果 -->
+      <div id="purchase-status" class="card" style="margin-top: 20px;"></div>
+    </div>
+
+    <!-- 我的卡片 Tab -->
+    <div id="myCards" class="tab-content">
+      <!-- 公司角色 -->
+      <div class="role-content company-role">
+        <div class="card">
+          <h2>卡片發行統計</h2>
+          <div id="card-stats">
+            <p>載入中...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第一手買家角色 -->
+      <div class="role-content buyer-role" style="display: none;">
+        <div class="card">
+          <h2>我擁有的卡片</h2>
+          <div id="my-cards-list-first">
+            <p>載入中...</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>創建交易</h2>
+          <select id="card-to-sell">
+            <option value="">-- 選擇卡片 --</option>
+          </select>
+          <input type="number" id="selling-price" placeholder="銷售價格 (ETH)" step="0.001">
+          <button id="create-trade-btn">創建交易</button>
+          <div id="create-trade-status"></div>
+        </div>
+      </div>
+
+      <!-- 第二手買家/賣家角色 -->
+      <!-- <div class="role-content second-hand-role" style="display: none;">
+        <div class="card">
+          <h2>我擁有的卡片</h2>
+          <div id="my-cards-list-second">
+            <p>載入中...</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>創建交易</h2>
+          <select id="card-to-sell">
+            <option value="">-- 選擇卡片 --</option>
+          </select>
+          <input type="number" id="selling-price" placeholder="銷售價格 (ETH)" step="0.001">
+          <button id="create-trade-btn">創建交易</button>
+          <div id="create-trade-status"></div>
+        </div>
+      </div> -->
+    </div>
+
+    <!-- 市場交易 Tab -->
+    <div id="market" class="tab-content">
+      <!-- 公司角色 -->
+      <div class="role-content company-role">
+        <div class="card">
+          <h2>所有交易概覽</h2>
+          <div id="all-trades-overview">
+            <p>載入中...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第一手買家角色 -->
+      <div class="role-content buyer-role" style="display: none;">
+        <div class="card">
+          <h2>可用交易</h2>
+          <div id="available-trades-first">
+            <p>載入中...</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>我的銷售</h2>
+          <div id="my-sales-first">
+            <p>載入中...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第二手買家/賣家角色 -->
+      <div class="role-content second-hand-role" style="display: none;">
+        <div class="card">
+          <h2>可用交易</h2>
+          <div id="available-trades-second">
+            <p>載入中...</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>我的交易管理</h2>
+          <div id="my-trades-second">
+            <p>載入中...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 管理功能 Tab -->
+    <div id="admin" class="tab-content">
+      <!-- 公司角色 -->
+      <div class="role-content company-role">
+        <div class="card">
+          <h2>審批卡片請求</h2>
+          <div id="pending-requests">
+            <p>載入中...</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>交易數據分析</h2>
+          <div id="trade-analytics">
+            <p>載入中...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 其他角色無管理功能 -->
+      <div class="role-content buyer-role" style="display: none;">
+        <div class="card">
+          <h2>無管理權限</h2>
+          <p>您目前的角色無法訪問管理功能，請切換到「公司」角色。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initEthers, signer } from './js/ethers-init.js';
+
+    // 合約 ABI (根據實際合約調整)
+    const contractABI = [
+      "function owner() external view returns (address)",
+      "event CardPurchased(address indexed buyer, uint256 amount, string uid)",
+      "event CardRequested(address indexed buyer, string uid)",
+      "event CardApproved(string uid, address indexed buyer, uint256 tokenId)",
+      "event CardRequestRejected(string uid, address buyer)",
+
+      // CardManager 相關函式
+      "function cardManager() view returns (address)",
+      "function getCompanyCards() external view returns (tuple(string uid, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI, bool isSold)[])",
+      "function getAvailableCards() external view returns (tuple(string uid, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI, bool isSold)[])",
+      "function getPendingCardRequests() external view returns (tuple(string uid, address buyer, uint256 amount, uint256 timestamp)[])",
+      "function getUserCards(address user) external view returns (tuple(string uid, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI, bool isSold)[])",
+      "function purchaseSpecificCard(string uid, address recipient) external payable returns (string)",
+      "function bindCardUID(string uid, address recipient) external",
+      "function getCardPrice() external view returns (uint256)",
+      "function requestCard(string uid, address recipient) external",
+      "function approveTransfer(string uid) external",
+      "function rejectTransfer(string uid) external",
+      "function setCardPrice(uint256 newPrice, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI) external returns (string)",
+
+      // TradeManager 相關函式
+      "function tradeManager() view returns (address)",
+      "function createTrade(string uid, uint256 price) external",
+      "function buyerSign(uint256 tradeId) external payable",
+      "function sellerSign(uint256 tradeId) external",
+      "function finalize(uint256 tradeId) external",
+      "function getUserTrades(address user) external view returns (tuple(uint256 tradeId, uint256 tokenId, address seller, address buyer, uint256 price, uint256 timestamp, uint8 status)[] memory)",
+      "function getTradeAnalytics() external view returns (uint256 totalTrades, uint256 completedTrades, uint256 pendingTrades, uint256 totalVolume)",
+      "function getAvailableTrades() external view returns (tuple(uint256 tradeId, uint256 tokenId, address seller, address buyer, uint256 price, uint256 timestamp, uint8 status)[] memory)",
+      "function getTrade(uint256 tradeId) external view returns (uint256 tokenId, address seller, address buyer, uint256 price, uint8 status, uint256 deadline)",
+      "function uidToTradeIds(string) view returns (uint256[])",
+      "function getTradesByUID(string memory uid) external view returns (tuple(uint256 tradeId, uint256 tokenId, address seller, address buyer, uint256 price, uint256 timestamp, uint8 status)[] memory)",
+      "function tradeCounter() view returns (uint256)",
+      "function recordPrimaryTrade(string memory uid,uint256 tokenId,address buyer,uint256 price) external",
+      "function setUidToTokenId(string memory uid,uint256 tokenId) external",
+      "function uidToTokenId(string) view returns (uint256)"
+    ];
+
+
+    // 合約地址 (需要替換為實際部署的地址) remix deploy完成以後把deployed contract的地址貼過來
+    //const contractAddress = "0x322619fcCcc741880ee7071cBE4e877Fb919eCf8";
+
+    // 狀態變數
+    let contract;
+    let userAccount;
+    let isOwner = false;
+    let contractAddress; // 宣告為全域變數
+    let cardManagerAddress;
+    let tradeManagerAddress;
+
+    // DOM 載入完成後執行
+    window.addEventListener('DOMContentLoaded', () => {
+      fetch('./contract-addresses.json')
+        .then(res => {
+          console.log("✅ 成功 fetch contract-addresses.json");
+          return res.json();
+        })
+        .then(async (addresses) => {
+          console.log("✅ JSON 內容為", addresses);
+
+          contractAddress = addresses.IdolCardSystem;
+          cardManagerAddress = addresses.CardManager;
+          tradeManagerAddress = addresses.TradeManager;
+        }
+        )
+        .catch(err => {
+          console.error("錯誤了!", err);
+        });
+
+      // 初始化標籤頁切換
+      initTabs();
+
+      // 獲取連接錢包按鈕
+      const connectBtn = document.getElementById('connectWalletBtn');
+      if (!connectBtn) return;
+
+      // 初始點擊綁定
+      connectBtn.addEventListener('click', connectWallet);
+
+      // 綁定角色切換按鈕
+      // document.getElementById('role-company').addEventListener('click', () => switchRole('company'));
+      // document.getElementById('role-buyer').addEventListener('click', () => switchRole('buyer'));
+
+      // 綁定其他按鈕事件，但暫時禁用
+      const buttons = document.querySelectorAll('button:not(#connectWalletBtn):not(.role-btn)');
+      buttons.forEach(btn => {
+        btn.disabled = true;
+      });
+
+      // 各角色功能按鈕事件
+      // 公司角色
+      document.getElementById('set-price-btn').addEventListener('click', setCardPrice);
+
+      // 第一手買家角色
+      document.getElementById('request-card-btn').addEventListener('click', bindCard);
+
+      // 第二手買家/賣家角色
+      document.getElementById('create-trade-btn').addEventListener('click', createTrade);
+    });
+
+    // 當前選擇的角色
+    let currentRole = 'company';
+
+    // 切換角色
+    function switchRole(role) {
+      // 更新當前角色
+      currentRole = role;
+
+      // 更新角色按鈕狀態
+      // document.querySelectorAll('.role-btn').forEach(btn => {
+      //   btn.classList.remove('role-active');
+      // });
+
+      let roleDescription = '';
+
+      switch (role) {
+        case 'company':
+          // document.getElementById('role-company').classList.add('role-active');
+          roleDescription = '當前角色: 公司 - 負責發行卡片和審批卡片綁定請求';
+          document.querySelector('.tab[data-tab="purchase"]').textContent = '發行卡片';
+
+          break;
+        case 'buyer':
+          // document.getElementById('role-buyer').classList.add('role-active');
+          roleDescription = '當前角色: 普通用戶 - 可以購買卡片、請求綁定與市場交易';
+          document.querySelector('.tab[data-tab="purchase"]').textContent = '購買卡片';
+          break;
+
+      }
+
+      // 更新角色描述
+      // document.getElementById('role-description').textContent = roleDescription;
+
+      // 更新內容顯示
+      document.querySelectorAll('.role-content').forEach(content => {
+        content.style.display = 'none';
+      });
+
+      if (role === 'company') {
+        // 只顯示公司角色的內容
+        document.querySelectorAll('.company-role').forEach(content => {
+          content.style.display = 'block';
+        });
+      } else {
+        // 只顯示用戶角色的內容  
+        document.querySelectorAll('.buyer-role').forEach(content => {
+          content.style.display = 'block';
+        });
+      }
+
+      // 如果錢包已連接，重新載入對應角色的數據
+      if (contract && userAccount) {
+        loadRoleSpecificData(role);
+      }
+    }
+    async function awaitContractsReady() {
+      while (!contractAddress || !cardManagerAddress || !tradeManagerAddress) {
+        console.log("⏳ 等待合約地址載入...");
+        await new Promise(resolve => setTimeout(resolve, 200)); // 每 200ms 檢查一次
+      }
+      console.log("✅ 合約地址已準備好");
+    }
+
+
+    // 連接錢包
+    async function connectWallet() {
+      await awaitContractsReady();
+
+      const connectBtn = document.getElementById('connectWalletBtn');
+      const connectionStatus = document.getElementById('connection-status');
+
+      try {
+        connectionStatus.innerHTML = '<span>連接中... <div class="loader"></div></span>';
+        connectionStatus.className = 'status info';
+
+        const result = await initEthers(contractABI, contractAddress);
+        contract = result.contract;
+        userAccount = result.userAddress;
+        console.log("使用者帳戶:", userAccount);
+        console.log("合約是否連接成功？", contract);
+
+        connectBtn.textContent = `已連接: ${userAccount.slice(0, 6)}...${userAccount.slice(-4)}`;
+        connectionStatus.textContent = `已連接到錢包：${userAccount}`;
+        connectionStatus.className = 'status success';
+
+        // 檢查是否為合約擁有者
+        const owner = await contract.owner();
+        isOwner = (owner.toLowerCase() === userAccount.toLowerCase());
+        console.log("當前用戶是否為擁有者？", isOwner);
+        console.log("使用的合約地址:", contractAddress);
+
+        // 顯示或隱藏管理員頁籤
+        const adminTab = document.querySelector('.tab[data-tab="admin"]');
+        if (isOwner) {
+          if (adminTab) adminTab.style.display = 'block';
+          // 直接切換角色為公司（擁有者）
+          currentRole = 'company';
+        } else {
+          if (adminTab) adminTab.style.display = 'none';
+          // 切換角色為買家（非擁有者）
+          currentRole = 'buyer';
+        }
+
+        // 控制顯示公司角色或買家角色內容
+        if (isOwner) {
+          document.querySelectorAll('.buyer-role, .second-hand-role').forEach(el => el.style.display = 'none');
+          document.querySelectorAll('.company-role').forEach(el => el.style.display = 'block');
+        } else {
+          document.querySelectorAll('.company-role').forEach(el => el.style.display = 'none');
+          document.querySelectorAll('.buyer-role, .second-hand-role').forEach(el => el.style.display = 'block');
+        }
+
+        // 顯示標籤與容器
+        const tabsContainer = document.querySelector('.tabs');
+        const mainContainer = document.querySelector('.container');
+        if (tabsContainer) tabsContainer.style.display = 'flex';
+        if (mainContainer) mainContainer.style.display = 'flex';
+
+        // 啟用除連接按鈕外所有按鈕
+        document.querySelectorAll('button:not(#connectWalletBtn)').forEach(btn => btn.disabled = false);
+
+        // 只在確定身份後，才載入資料
+        await loadRoleSpecificData(currentRole);
+
+        // 監聽帳戶變動事件，刷新頁面
+        if (window.ethereum) {
+          window.ethereum.on('accountsChanged', () => {
+            window.location.reload();
+          });
+        }
+
+        // 設定合約事件監聽器
+        setupEventListeners();
+
+      } catch (error) {
+        console.error("連接 MetaMask 失敗:", error);
+        connectionStatus.textContent = '連接錢包失敗，請重試。';
+        connectionStatus.className = 'status error';
+      }
+    }
+
+
+    // 根據角色載入特定數據
+    async function loadRoleSpecificData(role) {
+      try {
+        // 獲取卡片價格（各角色都需要）
+        const priceWei = await contract.getCardPrice();
+        const priceEth = ethers.utils.formatEther(priceWei);
+
+        // 更新各角色顯示的價格
+        const priceElement = document.getElementById('card-price');
+        if (priceElement) {
+          priceElement.textContent = `卡片價格: ${priceEth} ETH`;
+        }
+        // 根據角色載入不同數據
+        switch (role) {
+          case 'company':
+            // 載入待審批請求
+            if (isOwner) {
+              loadPendingRequests();
+              loadCardStats();
+              loadAllTradesOverview();
+              loadTradeAnalytics();
+            }
+            break;
+
+          case 'buyer':
+            loadMyCardsSecond(); // ➜ 顯示卡片與銷售
+            loadAvailableTradesSecond(); // ➜ 顯示市場交易
+            loadMyTradesSecond(); // ➜ 我的交易管理
+            loadAvailableCardsMarket(); // ➜ 公司卡片市場
+            loadMyCardsFirst(); // ✅ 顯示綁定中卡片
+            loadAvailableTradesFirst(); // ✅ 顯示掛單交易（保留）
+            loadMySalesFirst(); // ✅ 顯示自己掛的單
+            break;
+
+        }
+      } catch (error) {
+        console.error(`載入${role}角色數據失敗:`, error);
+      }
+    }
+    // 載入第一手買家卡片
+    async function loadMyCardsFirst() {
+      try {
+        const myCardsDiv = document.getElementById('my-cards-list-first');
+        myCardsDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+        // 使用合約的getUserCards函數獲取用戶卡片
+        const userCards = await contract.getUserCards(userAccount);
+
+        if (userCards && userCards.length > 0) {
+          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>操作</th></tr>';
+
+          for (const card of userCards) {
+            cardsHTML += `
+          <tr>
+            <td>${card.uid.slice(0, 10)}...${card.uid.slice(-6)}</td>
+            <td>${card.idolGroup}</td>
+            <td>${card.member}</td>
+            <td>${card.cardNumber}</td>
+            <td>
+              <button onclick="viewCardDetails('${card.uid}')">查看詳情</button>
+            </td>
+          </tr>
+        `;
+          }
+
+          cardsHTML += '</table>';
+          myCardsDiv.innerHTML = cardsHTML;
+        } else {
+          myCardsDiv.innerHTML = '<p>您還沒有任何卡片。</p>';
+        }
+      } catch (error) {
+        console.error("載入第一手買家卡片失敗:", error);
+        document.getElementById('my-cards-list-first').innerHTML = '<p class="error">載入卡片失敗。</p>';
+      }
+    }
+    async function loadCardStats() {
+      try {
+        const statsDiv = document.getElementById('card-stats');
+        statsDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+        // 從合約取得所有公司發行的卡片
+        const cards = await contract.getCompanyCards();
+
+        if (cards && cards.length > 0) {
+          let html = '<table>';
+          html += '<tr><th>UID</th><th>團體</th><th>成員</th><th>卡號</th><th>價格 (ETH)</th><th>是否售出</th></tr>';
+
+          for (const card of cards) {
+            const shortUID = `${card.uid.slice(0, 10)}...${card.uid.slice(-6)}`;
+            const priceEth = ethers.utils.formatEther(card.listPrice);
+            const soldText = card.isSold ? '✔️ 已售出' : '❌ 尚未售出';
+
+            html += `
+          <tr>
+            <td title="${card.uid}">${shortUID}</td>
+            <td>${card.idolGroup}</td>
+            <td>${card.member}</td>
+            <td>${card.cardNumber}</td>
+            <td>${priceEth}</td>
+            <td>${soldText}</td>
+          </tr>
+        `;
+          }
+
+          html += '</table>';
+          statsDiv.innerHTML = html;
+        } else {
+          statsDiv.innerHTML = '<p>目前尚未發行任何卡片。</p>';
+        }
+      } catch (error) {
+        console.error("載入公司卡片統計失敗:", error);
+        document.getElementById('card-stats').innerHTML = '<p class="error">載入卡片資訊失敗。</p>';
+      }
+    }
+
+
+    // 載入第一手買家可用交易
+    async function loadAvailableTradesFirst() {
+      try {
+        const tradesDiv = document.getElementById('available-trades-first');
+        tradesDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+        // 使用getAvailableTrades獲取所有可用交易
+        const trades = await contract.getAvailableTrades();
+
+        if (trades && trades.length > 0) {
+          let tradesHTML = '<table><tr><th>交易ID</th><th>卡片ID</th><th>賣家</th><th>價格</th><th>操作</th></tr>';
+
+          for (const trade of trades) {
+            tradesHTML += `
+          <tr>
+            <td>#${trade.tradeId}</td>
+            <td>#${trade.tokenId}</td>
+            <td>${trade.seller.slice(0, 6)}...${trade.seller.slice(-4)}</td>
+            <td>${ethers.utils.formatEther(trade.price)} ETH</td>
+            <td>
+              <button onclick="buyCard(${trade.tradeId}, '${trade.price}')">購買</button>
+            </td>
+          </tr>
+        `;
+          }
+
+          tradesHTML += '</table>';
+          tradesDiv.innerHTML = tradesHTML;
+        } else {
+          tradesDiv.innerHTML = '<p>目前沒有可用的交易。</p>';
+        }
+      } catch (error) {
+        console.error("載入第一手買家可用交易失敗:", error);
+        document.getElementById('available-trades-first').innerHTML = '<p class="error">載入交易失敗。</p>';
+      }
+    }
+
+    // 載入第一手買家的銷售
+    async function loadMySalesFirst() {
+      try {
+        const salesDiv = document.getElementById('my-sales-first');
+        salesDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+        // 使用getUserTrades獲取用戶參與的交易
+        const trades = await contract.getUserTrades(userAccount);
+
+        if (trades && trades.length > 0) {
+          // 過濾出用戶作為賣家的交易
+          const sales = trades.filter(trade => trade.seller.toLowerCase() === userAccount.toLowerCase());
+
+          if (sales.length > 0) {
+            let salesHTML = '<table><tr><th>交易ID</th><th>卡片ID</th><th>買家</th><th>價格</th><th>狀態</th><th>操作</th></tr>';
+
+            for (const sale of sales) {
+              let statusText = '';
+              let actionButton = '';
+
+              // 根據交易狀態設置顯示文本和操作按鈕
+              switch (sale.status) {
+                case 0: // Created
+                  statusText = '<span class="trade-status status-created">已創建</span>';
+                  break;
+                case 1: // BuyerSigned
+                  statusText = '<span class="trade-status status-buyer-signed">買家已簽署</span>';
+                  actionButton = `<button onclick="sellerSign(${sale.tradeId})">簽署交易</button>`;
+                  break;
+                case 2: // SellerSigned
+                  statusText = '<span class="trade-status status-seller-signed">賣家已簽署</span>';
+                  break;
+                case 5: // Completed
+                  statusText = '<span class="trade-status status-completed">已完成</span>';
+                  break;
+                default:
+                  statusText = `<span>狀態: ${sale.status}</span>`;
+              }
+
+              salesHTML += `
+            <tr>
+              <td>#${sale.tradeId}</td>
+              <td>#${sale.tokenId}</td>
+              <td>${sale.buyer ? `${sale.buyer.slice(0, 6)}...${sale.buyer.slice(-4)}` : '未定'}</td>
+              <td>${ethers.utils.formatEther(sale.price)} ETH</td>
+              <td>${statusText}</td>
+              <td>${actionButton}</td>
+            </tr>
+          `;
+            }
+
+            salesHTML += '</table>';
+            salesDiv.innerHTML = salesHTML;
+          } else {
+            salesDiv.innerHTML = '<p>您沒有任何銷售記錄。</p>';
+          }
+        } else {
+          salesDiv.innerHTML = '<p>您沒有任何銷售記錄。</p>';
+        }
+      } catch (error) {
+        console.error("載入第一手買家銷售失敗:", error);
+        document.getElementById('my-sales-first').innerHTML = '<p class="error">載入銷售記錄失敗。</p>';
+      }
+    }
+
+    // 載入第二手買家/賣家卡片
+    async function loadMyCardsSecond() {
+      try {
+        const myCardsDiv = document.getElementById('my-cards-list-second');
+        const cardToSell = document.getElementById('card-to-sell');
+
+        myCardsDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+        // 清空下拉選單
+        while (cardToSell.options.length > 1) {
+          cardToSell.remove(1);
+        }
+
+        // 使用getUserCards獲取用戶卡片
+        const userCards = await contract.getUserCards(userAccount);
+
+        if (userCards && userCards.length > 0) {
+          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>操作</th></tr>';
+
+          for (const card of userCards) {
+            cardsHTML += `
+          <tr>
+            <td>${card.uid.slice(0, 10)}...${card.uid.slice(-6)}</td>
+            <td>${card.idolGroup}</td>
+            <td>${card.member}</td>
+            <td>${card.cardNumber}</td>
+            <td>
+              <button onclick="viewCardDetails('${card.uid}')">查看詳情</button>
+            </td>
+          </tr>
+        `;
+
+            // 添加到下拉選單
+            const option = document.createElement('option');
+            option.value = card.uid;
+            option.textContent = `${card.idolGroup} - ${card.member} (${card.cardNumber})`;
+            cardToSell.appendChild(option);
+          }
+
+          cardsHTML += '</table>';
+          myCardsDiv.innerHTML = cardsHTML;
+        } else {
+          myCardsDiv.innerHTML = '<p>您還沒有任何卡片。</p>';
+        }
+      } catch (error) {
+        console.error("載入第二手買家/賣家卡片失敗:", error);
+        document.getElementById('my-cards-list-second').innerHTML = '<p class="error">載入卡片失敗。</p>';
+      }
+    }
+
+    // 載入第二手買家/賣家可用交易
+    async function loadAvailableTradesSecond() {
+      // 與loadAvailableTradesFirst基本相同
+      try {
+        const tradesDiv = document.getElementById('available-trades-second');
+        tradesDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+        const trades = await contract.getAvailableTrades();
+
+        if (trades && trades.length > 0) {
+          let tradesHTML = '<table><tr><th>交易ID</th><th>卡片ID</th><th>賣家</th><th>價格</th><th>操作</th></tr>';
+
+          for (const trade of trades) {
+            tradesHTML += `
+          <tr>
+            <td>#${trade.tradeId}</td>
+            <td>#${trade.tokenId}</td>
+            <td>${trade.seller.slice(0, 6)}...${trade.seller.slice(-4)}</td>
+            <td>${ethers.utils.formatEther(trade.price)} ETH</td>
+            <td>
+              <button onclick="buyCard(${trade.tradeId}, '${trade.price}')">購買</button>
+            </td>
+          </tr>
+        `;
+          }
+
+          tradesHTML += '</table>';
+          tradesDiv.innerHTML = tradesHTML;
+        } else {
+          tradesDiv.innerHTML = '<p>目前沒有可用的交易。</p>';
+        }
+      } catch (error) {
+        console.error("載入第二手買家/賣家可用交易失敗:", error);
+        document.getElementById('available-trades-second').innerHTML = '<p class="error">載入交易失敗。</p>';
+      }
+    }
+
+    async function sellerSign(tradeId) {
+      try {
+        await contract.sellerSign(tradeId);
+        alert('賣家簽署成功！');
+        loadMyTradesSecond();
+      } catch (error) {
+        console.error("簽署失敗:", error);
+        alert('簽署失敗：' + error.message);
+      }
+    }
+
+    async function finalize(tradeId) {
+      try {
+        await contract.finalize(tradeId);
+        alert('交易完成！');
+        loadMyTradesSecond();
+      } catch (error) {
+        console.error("完成交易失敗:", error);
+        alert('完成交易失敗：' + error.message);
+      }
+    }
+
+    // 載入第二手買家/賣家的交易管理
+    async function loadMyTradesSecond() {
+      try {
+        const tradesDiv = document.getElementById('my-trades-second');
+        tradesDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+        // 使用getUserTrades獲取用戶參與的交易
+        const trades = await contract.getUserTrades(userAccount);
+
+        if (trades && trades.length > 0) {
+          let tradesHTML = '<table><tr><th>交易ID</th><th>卡片ID</th><th>角色</th><th>交易對象</th><th>價格</th><th>狀態</th><th>操作</th></tr>';
+
+          for (const trade of trades) {
+            let roleText = '';
+            let counterparty = '';
+            let actionButton = '';
+            let statusText = '';
+
+            // 確定用戶角色
+            if (trade.seller.toLowerCase() === userAccount.toLowerCase()) {
+              roleText = '賣家';
+              counterparty = trade.buyer ? `${trade.buyer.slice(0, 6)}...${trade.buyer.slice(-4)}` : '未定';
+
+              // 根據交易狀態設置操作按鈕
+              if (trade.status === 1) { // BuyerSigned
+                actionButton = `<button onclick="sellerSign(${trade.tradeId})">簽署交易</button>`;
+              }
+            } else {
+              roleText = '買家';
+              counterparty = `${trade.seller.slice(0, 6)}...${trade.seller.slice(-4)}`;
+
+              // 根據交易狀態設置操作按鈕
+              if (trade.status === 2) { // SellerSigned
+                actionButton = `<button onclick="finalize(${trade.tradeId})">完成交易</button>`;
+              }
+            }
+
+            // 設置狀態文本
+            switch (trade.status) {
+              case 0: // Created
+                statusText = '<span class="trade-status status-created">已創建</span>';
+                break;
+              case 1: // BuyerSigned
+                statusText = '<span class="trade-status status-buyer-signed">買家已簽署</span>';
+                break;
+              case 2: // SellerSigned
+                statusText = '<span class="trade-status status-seller-signed">賣家已簽署</span>';
+                break;
+              case 5: // Completed
+                statusText = '<span class="trade-status status-completed">已完成</span>';
+                break;
+              default:
+                statusText = `<span>狀態: ${trade.status}</span>`;
+            }
+
+            tradesHTML += `
+          <tr>
+            <td>#${trade.tradeId}</td>
+            <td>#${trade.tokenId}</td>
+            <td>${roleText}</td>
+            <td>${counterparty}</td>
+            <td>${ethers.utils.formatEther(trade.price)} ETH</td>
+            <td>${statusText}</td>
+            <td>${actionButton}</td>
+          </tr>
+        `;
+          }
+
+          tradesHTML += '</table>';
+          tradesDiv.innerHTML = tradesHTML;
+        } else {
+          tradesDiv.innerHTML = '<p>您沒有任何交易記錄。</p>';
+        }
+      } catch (error) {
+        console.error("載入第二手買家/賣家交易管理失敗:", error);
+        document.getElementById('my-trades-second').innerHTML = '<p class="error">載入交易管理失敗。</p>';
+      }
+    }
+
+    // 載入所有交易概覽
+    // async function loadAllTradesOverview() {
+    //   if (!isOwner) {
+    //     document.getElementById('all-trades-overview').innerHTML = '<p>只有合約擁有者可查看交易概覽。</p>';
+    //     console.log('[loadAllTradesOverview] 非擁有者，無法查看交易概覽');
+    //     return;
+    //   }
+    //   try {
+    //     const overviewDiv = document.getElementById('all-trades-overview');
+    //     overviewDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+    //     // 使用合約函數取得交易統計數據
+    //     const analytics = await contract.getTradeAnalytics();
+    //     const totalTrades = analytics.totalTrades.toNumber();
+
+    //     if (totalTrades === 0) {
+    //       overviewDiv.innerHTML = '<p>目前尚無交易紀錄。</p>';
+    //       return;
+    //     }
+
+    //     const trades = [];
+    //     for (let i = 1; i <= totalTrades; i++) {
+    //       try {
+    //         const trade = await contract.getTrade(i);
+    //         console.log(`[loadAllTradesOverview] 取得交易 #${i}:`, trade);
+
+    //         trades.push({
+    //           tradeId: i,
+    //           tokenId: trade.tokenId,
+    //           seller: trade.seller,
+    //           buyer: trade.buyer,
+    //           price: trade.price,
+    //           status: trade.status,
+    //           deadline: trade.deadline
+    //         });
+    //       } catch (err) {
+    //         console.warn(`[loadAllTradesOverview] 跳過交易 #${i}（可能已刪除）`, err);
+    //       }
+    //     }
+
+    //     // 建立 HTML 表格
+    //     let html = '<table>';
+    //     html += `
+    //       <tr>
+    //         <th>交易ID</th>
+    //         <th>卡片ID</th>
+    //         <th>賣家</th>
+    //         <th>買家</th>
+    //         <th>價格 (ETH)</th>
+    //         <th>狀態</th>
+    //       </tr>
+    //     `;
+
+    //     for (const trade of trades) {
+    //       const priceEth = ethers.utils.formatEther(trade.price);
+    //       const sellerShort = `${trade.seller.slice(0, 6)}...${trade.seller.slice(-4)}`;
+    //       const buyerShort = trade.buyer ? `${trade.buyer.slice(0, 6)}...${trade.buyer.slice(-4)}` : '—';
+
+    //       let statusText = '';
+    //       switch (trade.status) {
+    //         case 0: statusText = '<span class="trade-status status-created">已創建</span>'; break;
+    //         case 1: statusText = '<span class="trade-status status-buyer-signed">買家已簽署</span>'; break;
+    //         case 2: statusText = '<span class="trade-status status-seller-signed">賣家已簽署</span>'; break;
+    //         case 5: statusText = '<span class="trade-status status-completed">已完成</span>'; break;
+    //         default: statusText = `<span class="trade-status">未知狀態（${trade.status}）</span>`;
+    //       }
+
+    //       html += `
+    //         <tr>
+    //           <td>#${trade.tradeId}</td>
+    //           <td>#${trade.tokenId}</td>
+    //           <td>${sellerShort}</td>
+    //           <td>${buyerShort}</td>
+    //           <td>${priceEth}</td>
+    //           <td>${statusText}</td>
+    //         </tr>
+    //       `;
+    //     }
+
+    //     html += '</table>';
+    //     overviewDiv.innerHTML = html;
+
+    //   } catch (error) {
+    //     console.error("載入交易概覽失敗:", error);
+    //     document.getElementById('all-trades-overview').innerHTML = '<p class="error">載入交易失敗。</p>';
+    //   }
+    // }
+
+    async function loadAllTradesOverview() {
+      const overviewDiv = document.getElementById('all-trades-overview');
+      if (!contract) {
+        overviewDiv.innerHTML = '<p>尚未連接合約。</p>';
+        return;
+      }
+      if (!isOwner) {
+        overviewDiv.innerHTML = '<p>只有合約擁有者可查看交易概覽。</p>';
+        return;
+      }
+
+      try {
+        overviewDiv.innerHTML = '<p>已連接合約待合併程式</p>';
+
+        // 你原本其他邏輯後續可放這裡
+      } catch (error) {
+        console.error("載入交易概覽失敗:", error);
+        overviewDiv.innerHTML = '<p class="error">載入交易失敗。</p>';
+      }
+    }
+
+
+
+    // 載入交易數據分析
+    // async function loadTradeAnalytics() {
+    //   if (!isOwner) {
+    //     document.getElementById('trade-analytics').innerHTML = '<p>只有合約擁有者可以查看交易數據分析。</p>';
+    //     return;
+    //   }
+    //   try {
+    //     const analyticsDiv = document.getElementById('trade-analytics');
+    //     analyticsDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+    //     const analytics = await contract.getTradeAnalytics();
+    //     console.log('[loadTradeAnalytics] getTradeAnalytics 回傳:', analytics);
+
+    //     // 若回傳物件中是 BigNumber，要確認格式
+    //     console.log('[loadTradeAnalytics] 各欄位型態與值:', {
+    //       totalTrades: analytics.totalTrades,
+    //       completedTrades: analytics.completedTrades,
+    //       pendingTrades: analytics.pendingTrades,
+    //       totalVolume: analytics.totalVolume
+    //     });
+
+    //     let analyticsHTML = `
+    //       <div>
+    //         <h3>交易統計</h3>
+    //         <p>總交易數: ${analytics.totalTrades}</p>
+    //         <p>已完成交易: ${analytics.completedTrades}</p>
+    //         <p>待處理交易: ${analytics.pendingTrades}</p>
+    //         <p>總交易量: ${ethers.utils.formatEther(analytics.totalVolume)} ETH</p>
+    //       </div>
+    //     `;
+
+    //     // TODO: 添加更多分析，如每日/每週交易量，平均價格等
+
+    //     analyticsDiv.innerHTML = analyticsHTML;
+    //   } catch (error) {
+    //     console.error("載入交易數據分析失敗:", error);
+    //     document.getElementById('trade-analytics').innerHTML = '<p class="error">載入交易數據分析失敗。</p>';
+    //   }
+    // }
+
+    async function loadTradeAnalytics() {
+      const analyticsDiv = document.getElementById('trade-analytics');
+      if (!contract) {
+        analyticsDiv.innerHTML = '<p>尚未連接合約。</p>';
+        return;
+      }
+      if (!isOwner) {
+        analyticsDiv.innerHTML = '<p>只有合約擁有者可以查看交易數據分析。</p>';
+        return;
+      }
+      try {
+        analyticsDiv.innerHTML = '<p>已連接合約待合併程式</p>';
+
+        // 你原本其他邏輯後續可放這裡
+      } catch (error) {
+        console.error("載入交易數據分析失敗:", error);
+        analyticsDiv.innerHTML = '<p class="error">載入交易數據分析失敗。</p>';
+      }
+    }
+
+
+    async function loadAvailableCardsMarket() {
+      const marketDiv = document.getElementById('available-cards-market');
+
+      try {
+        marketDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+        // 主合約獲取所有可購買卡片
+        const availableCards = await contract.getAvailableCards();
+        console.log("可用卡片:", availableCards);
+
+        if (availableCards && availableCards.length > 0) {
+          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>價格</th><th>操作</th></tr>';
+
+          for (const card of availableCards) {
+            if (card.isSold) continue;
+            // 顯示UID的前10位和後6位
+            const shortUID = `${card.uid.slice(0, 10)}...${card.uid.slice(-6)}`;
+            // 格式化價格顯示
+            const priceEth = ethers.utils.formatEther(card.listPrice);
+            // 使用原始價格值作為參數傳遞
+            const priceWei = card.listPrice.toString();
+
+            cardsHTML += `
+              <tr>
+                <td title="${card.uid}">${shortUID}</td>
+                <td>${card.idolGroup}</td>
+                <td>${card.member}</td>
+                <td>${card.cardNumber}</td>
+                <td>${priceEth} ETH</td>
+                <td>
+                  <button onclick="purchaseSpecificCard('${card.uid}', '${priceWei}')">購買</button>
+                </td>
+              </tr>
+            `;
+          }
+
+          cardsHTML += '</table>';
+          marketDiv.innerHTML = cardsHTML;
+        } else {
+          marketDiv.innerHTML = '<p>目前沒有可購買的卡片。</p>';
+        }
+      } catch (error) {
+        console.error("載入市場卡片失敗:", error);
+        marketDiv.innerHTML = `<p class="error">載入市場卡片失敗: ${error.message}</p>`;
+      }
+    }
+
+    // 將操作函數掛到window對象上
+    window.purchaseSpecificCard = purchaseSpecificCard;
+    window.approveTransfer = approveTransfer;
+    window.buyCard = buyCard;
+    window.sellerSign = sellerSign;
+    window.finalize = finalize;
+
+    // 設置事件監聽器
+    function setupEventListeners() {
+      if (!contract) return;
+
+      // 監聽卡片購買事件
+      contract.on("CardPurchased", (buyer, amount, uid) => {
+        console.log("捕獲到 CardPurchased 事件:", buyer, amount.toString(), uid);
+
+        if (buyer.toLowerCase() === userAccount.toLowerCase()) {
+          console.log("用戶購買卡片，UID:", uid);
+          // 更新UI顯示
+          const purchaseStatus = document.getElementById('purchase-status');
+          if (purchaseStatus) {
+            purchaseStatus.innerHTML = `
+          <div class="status success">
+            <p>購買成功！</p>
+            <p>請使用掃描器掃描您的卡片 UID，或手動輸入。</p>
+            <p>按下「綁定卡片」按鈕來申請卡片所有權轉移。</p>
+          </div>
+        `;
+          }
+
+          // 自動填入 UID 到綁定輸入框
+          const uidInput = document.getElementById('card-uid');
+          if (uidInput) uidInput.value = uid;
+          loadAvailableCardsMarket();
+
+        }
+      });
+
+      // 其他事件監聽...
+    }
+
+    // 添加到您的 JS 文件中
+    async function testContractFunctions() {
+      console.log("開始測試合約功能...");
+
+      try {
+        // 1. 檢查合約是否已連接
+        console.log("合約實例:", contract);
+
+        // 2. 檢查合約 ABI 中是否有正確的函數定義
+        console.log("合約 ABI:", contractABI);
+
+        // 3. 嘗試獲取可用卡片
+        console.log("嘗試獲取可用卡片...");
+        const cards = await contract.getAvailableCards();
+        console.log("可用卡片:", cards);
+
+        // 4. 嘗試檢查事件定義
+        console.log("檢查事件定義...");
+        const filter = contract.filters.CardPurchased();
+        console.log("CardPurchased 事件過濾器:", filter);
+
+        // 5. 檢查錢包餘額
+        const balance = await window.ethereum.request({
+          method: 'eth_getBalance',
+          params: [userAccount, 'latest']
+        });
+        console.log("錢包餘額:", ethers.utils.formatEther(balance), "ETH");
+
+        console.log("測試完成");
+      } catch (error) {
+        console.error("合約功能測試失敗:", error);
+      }
+    }
+
+    // 將其添加到 window 對象
+    window.testContractFunctions = testContractFunctions;
+
+
+    // 添加購買特定卡片的函數
+    async function purchaseSpecificCard(uid, priceWei) {
+      const purchaseStatus = document.getElementById('purchase-status');
+      try {
+        purchaseStatus.innerHTML = '<span>處理中... <div class="loader"></div></span>';
+        purchaseStatus.className = 'status info';
+
+        console.log("準備購買卡片:", uid);
+        console.log("價格(Wei):", priceWei);
+
+        // 轉成 BigNumber，避免格式錯誤
+        let valueForTx;
+        try {
+          valueForTx = ethers.BigNumber.from(priceWei);
+        } catch (e) {
+          purchaseStatus.innerHTML = `<div class="status error">價格格式錯誤: ${e.message}</div>`;
+          purchaseStatus.className = 'status error';
+          return;
+        }
+
+        // 從頁面取得已連接錢包地址 (假設 connectionStatus 是該元素ID)
+        const connectionStatus = document.getElementById('connection-status');
+        if (!connectionStatus || !connectionStatus.textContent) {
+          purchaseStatus.innerHTML = `<div class="status error">找不到已連接錢包地址，請先連接錢包。</div>`;
+          purchaseStatus.className = 'status error';
+          return;
+        }
+        // 假設 textContent 格式是 '已連接到錢包：0x1234...abcd'
+        // 只取地址部分，去掉前綴
+        const prefix = '已連接到錢包：';
+        let signerAddress = connectionStatus.textContent.trim();
+        if (signerAddress.startsWith(prefix)) {
+          signerAddress = signerAddress.slice(prefix.length).trim();
+        }
+
+        // 簡單驗證地址格式（可改用 ethers.utils.isAddress）
+        if (!ethers.utils.isAddress(signerAddress)) {
+          purchaseStatus.innerHTML = `<div class="status error">錢包地址格式錯誤: ${signerAddress}</div>`;
+          purchaseStatus.className = 'status error';
+          return;
+        }
+
+        console.log("接收者錢包地址:", signerAddress);
+        console.log("傳入 UID:", uid);
+        // callStatic 模擬交易，帶 uid 與 recipient
+        try {
+          const returnedUidCheck = await contract.callStatic.purchaseSpecificCard(uid, signerAddress, {
+            value: valueForTx,
+            gasLimit: 500000,
+          });
+          console.log("模擬成功，返回UID:", returnedUidCheck);
+        } catch (staticError) {
+          console.warn("模擬失敗，可能交易會 revert:", staticError);
+          // 依需求決定是否return
+          // return;
+        }
+
+        // 發送交易，帶 uid 與 recipient
+        const tx = await contract.purchaseSpecificCard(uid, signerAddress, {
+          value: valueForTx,
+          gasLimit: 500000,
+        });
+        console.log("交易發送:", tx);
+
+        const receipt = await tx.wait();
+        console.log("交易確認:", receipt);
+
+        // 🔥 加上這段：查詢 tokenId 並記錄交易
+        try {
+          const tokenId = await contract.uidToTokenId(uid);
+          console.log("對應 tokenId:", tokenId.toString());
+
+          const tx2 = await contract.recordPrimaryTrade(uid, tokenId, signerAddress, valueForTx);
+          await tx2.wait();
+          console.log("✅ 一手交易已記錄到 TradeManager");
+        } catch (e) {
+          console.warn("⚠️ 無法記錄一手交易:", e.message);
+        }
+
+        purchaseStatus.innerHTML = `
+          <div class="status success">
+            <p>購買成功！</p>
+            <p>請掃描或輸入卡片 UID</p>
+            <p>並按下「綁定卡片」按鈕以綁上。</p>
+          </div>
+        `;
+
+        // 自動填入綁定欄位
+        const cardUidInput = document.getElementById('card-uid');
+        if (cardUidInput) {
+          cardUidInput.value = uid;
+        }
+
+        // 重新載入市場卡片
+        await loadAvailableCardsMarket();
+
+      } catch (error) {
+        console.error("購買卡片失敗:", error);
+        let errorMessage = error.message || "未知錯誤";
+
+        if (error.code === 'ACTION_REJECTED') {
+          errorMessage = "交易被用戶拒絕";
+        } else if (error.code === 'CALL_EXCEPTION') {
+          errorMessage = "合約執行錯誤，請確認錢包餘額或卡片狀態";
+        }
+
+        purchaseStatus.innerHTML = `<div class="status error">購買卡片失敗: ${errorMessage}</div>`;
+        purchaseStatus.className = 'status error';
+      }
+    }
+    document.getElementById('card-modal-close').addEventListener('click', () => {
+      const modal = document.getElementById('card-modal');
+      if (modal) {
+        modal.style.display = 'none';
+      }
+    });
+
+
+
+    // 載入我的卡片
+    async function loadMyCards() {
+      try {
+        const balance = await contract.balanceOf(userAccount);
+        const myCardsList = document.getElementById('my-cards-list');
+        const cardToSell = document.getElementById('card-to-sell');
+
+        // 清空下拉選單
+        while (cardToSell.options.length > 1) {
+          cardToSell.remove(1);
+        }
+
+        if (balance > 0) {
+          let cardsHTML = '<table><tr><th>Token ID</th><th>操作</th></tr>';
+
+          for (let i = 0; i < balance; i++) {
+            const tokenId = await contract.tokenOfOwnerByIndex(userAccount, i);
+
+            cardsHTML += `
+              <tr>
+                <td>卡片 #${tokenId}</td>
+                <td>
+                  <button onclick="viewCardDetails(${tokenId})">查看詳情</button>
+                </td>
+              </tr>
+            `;
+
+            // 添加到下拉選單
+            const option = document.createElement('option');
+            option.value = tokenId;
+            option.textContent = `卡片 #${tokenId}`;
+            cardToSell.appendChild(option);
+          }
+
+          cardsHTML += '</table>';
+          myCardsList.innerHTML = cardsHTML;
+        } else {
+          myCardsList.innerHTML = '<p>您還沒有任何卡片。</p>';
+        }
+      } catch (error) {
+        console.error("載入卡片失敗:", error);
+        document.getElementById('my-cards-list').innerHTML = '<p class="error">載入卡片失敗。</p>';
+      }
+    }
+
+    // 載入可用交易
+    async function loadAvailableTrades() {
+      try {
+        const trades = await contract.getAvailableTrades();
+        const availableTradesDiv = document.getElementById('available-trades');
+
+        if (trades.length > 0) {
+          let tradesHTML = '<table><tr><th>交易 ID</th><th>卡片 ID</th><th>價格</th><th>操作</th></tr>';
+
+          for (const trade of trades) {
+            tradesHTML += `
+              <tr>
+                <td>#${trade.tradeId}</td>
+                <td>卡片 #${trade.tokenId}</td>
+                <td>${ethers.utils.formatEther(trade.price)
+              } ETH</td>
+                <td>
+                  <button onclick="buyCard(${trade.tradeId}, '${trade.price}')">購買</button>
+                </td>
+              </tr>
+            `;
+          }
+
+          tradesHTML += '</table>';
+          availableTradesDiv.innerHTML = tradesHTML;
+        } else {
+          availableTradesDiv.innerHTML = '<p>目前沒有可用的交易。</p>';
+        }
+      } catch (error) {
+        console.error("載入交易失敗:", error);
+        document.getElementById('available-trades').innerHTML = '<p class="error">載入交易失敗。</p>';
+      }
+    }
+
+    // 載入我的交易
+    async function loadMyTrades() {
+      // 這部分需要額外實現獲取用戶相關交易的方法
+      // 合約中沒有直接提供獲取用戶交易的函數，需要前端記錄或修改合約
+      document.getElementById('my-trades').innerHTML = '<p>功能開發中...</p>';
+    }
+
+    // 載入待處理的請求 (僅管理員)
+    async function loadPendingRequests() {
+      if (!isOwner) {
+        document.getElementById('pending-requests').innerHTML = '<p>只有合約擁有者可查看待處理請求。</p>';
+        return;
+      }
+
+      try {
+        const pendingDiv = document.getElementById('pending-requests');
+        pendingDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+        // 獲取待處理請求
+        const pendingRequests = await contract.getPendingCardRequests();
+
+        if (pendingRequests && pendingRequests.length > 0) {
+          let requestsHTML = '<table><tr><th>卡片UID</th><th>買家地址</th><th>金額</th><th>請求時間</th><th>操作</th></tr>';
+
+          for (const request of pendingRequests) {
+            // 顯示UID的前10位和後6位
+            const shortUID = `${request.uid.slice(0, 10)}...${request.uid.slice(-6)}`;
+
+            // 將時間戳轉換為日期
+            const date = new Date(request.timestamp * 1000);
+            const formattedDate = date.toLocaleString();
+
+            // 將金額轉換為ETH
+            const amount = ethers.utils.formatEther(request.amount);
+
+            requestsHTML += `
+          <tr>
+            <td title="${request.uid}">${shortUID}</td>
+            <td>${request.buyer}</td>
+            <td>${amount} ETH</td>
+            <td>${formattedDate}</td>
+            <td>
+              <button onclick="approveTransfer('${request.uid}')">批准</button>
+              <button onclick="rejectTransfer('${request.uid}')">拒絕</button>
+            </td>
+          </tr>
+        `;
+          }
+
+          requestsHTML += '</table>';
+          pendingDiv.innerHTML = requestsHTML;
+        } else {
+          pendingDiv.innerHTML = '<p>目前沒有待處理的請求。</p>';
+        }
+      } catch (error) {
+        console.error("載入待處理請求失敗:", error);
+        document.getElementById('pending-requests').innerHTML = `<p class="error">載入待處理請求失敗: ${error.message}</p>`;
+      }
+    }
+
+    // 添加拒絕轉移的函數
+    async function rejectTransfer(uid) {
+      if (!isOwner) {
+        alert('只有合約擁有者可以執行此操作。');
+        return;
+      }
+
+      try {
+        await contract.rejectTransfer(uid);
+        alert('已拒絕此請求！');
+
+        // 重新載入待處理請求
+        loadPendingRequests();
+      } catch (error) {
+        console.error("拒絕請求失敗:", error);
+        alert('拒絕請求失敗：' + error.message);
+      }
+    }
+
+    // 添加到window對象
+    window.rejectTransfer = rejectTransfer;
+
+    // 購買卡片
+    // async function purchaseCard() {
+    //   try {
+    //     const priceWei = await contract.getCardPrice();
+    //     const purchaseStatus = document.getElementById('purchase-status');
+
+    //     purchaseStatus.innerHTML = '<span>處理中... <div class="loader"></div></span>';
+    //     purchaseStatus.className = 'status info';
+
+    //     await contract.purchaseSpecificCard({ value: priceWei });
+
+    //     purchaseStatus.textContent = '購買成功！現在您可以綁定卡片 UID。';
+    //     purchaseStatus.className = 'status success';
+    //   } catch (error) {
+    //     console.error("購買卡片失敗:", error);
+    //     document.getElementById('purchase-status').textContent = '購買卡片失敗。';
+    //     document.getElementById('purchase-status').className = 'status error';
+    //   }
+    // }
+
+    // async function bindCard() {
+    //   const uid = document.getElementById('card-uid').value.trim();
+    //   const requestStatus = document.getElementById('request-status');
+
+    //   if (!uid) {
+    //     requestStatus.textContent = '請輸入有效的卡片 UID。';
+    //     requestStatus.className = 'status error';
+    //     return;
+    //   }
+
+    //   try {
+    //     // 從頁面取得已連接錢包地址 (假設 connectionStatus 是該元素ID)
+    //     const connectionStatus = document.getElementById('connection-status');
+    //     if (!connectionStatus || !connectionStatus.textContent) {
+    //       requestStatus.innerHTML = `<div class="status error">找不到已連接錢包地址，請先連接錢包。</div>`;
+    //       requestStatus.className = 'status error';
+    //       return;
+    //     }
+    //     const prefix = '已連接到錢包：';
+    //     let signerAddress = connectionStatus.textContent.trim();
+    //     if (signerAddress.startsWith(prefix)) {
+    //       signerAddress = signerAddress.slice(prefix.length).trim();
+    //     }
+
+    //     // 簡單驗證地址格式（可改用 ethers.utils.isAddress）
+    //     if (!ethers.utils.isAddress(signerAddress)) {
+    //       requestStatus.innerHTML = `<div class="status error">錢包地址格式錯誤: ${signerAddress}</div>`;
+    //       requestStatus.className = 'status error';
+    //       return;
+    //     }
+    //     requestStatus.innerHTML = '<span>綁定中... <div class="loader"></div></span>';
+    //     requestStatus.className = 'status info';
+
+    //     // 呼叫主程式合約bindCardUID
+    //     const tx = await contract.bindCardUID(uid, signerAddress);
+    //     await tx.wait();
+
+    //     requestStatus.textContent = '綁定成功！您的卡片已完成綁定。';
+    //     requestStatus.className = 'status success';
+    //   } catch (error) {
+    //     console.error("綁定卡片失敗:", error);
+    //     let errorMessage = error.message.replace('execution reverted: ', '');
+    //     requestStatus.textContent = '綁定卡片失敗：' + errorMessage;
+    //     requestStatus.className = 'status error';
+    //   }
+    // }
+
+    // 創建交易
+    async function createTrade() {
+      const uidValue = document.getElementById('card-to-sell').value;
+      const priceEth = document.getElementById('selling-price').value;
+      const createTradeStatus = document.getElementById('create-trade-status');
+
+      if (!uidValue || !priceEth) {
+        createTradeStatus.textContent = '請選擇卡片並輸入有效的價格。';
+        createTradeStatus.className = 'status error';
+        return;
+      }
+
+      try {
+        createTradeStatus.innerHTML = '<span>處理中... <div class="loader"></div></span>';
+        createTradeStatus.className = 'status info';
+
+        const priceWei = ethers.utils.parseEther(priceEth);
+
+        // 使用選擇的卡片UID創建交易
+        await contract.createTrade(uidValue, priceWei);
+
+        createTradeStatus.textContent = '交易創建成功！';
+        createTradeStatus.className = 'status success';
+
+        // 重新載入相關數據
+        if (currentRole === 'second-hand') {
+          loadMyTradesSecond();
+          loadAvailableTradesSecond();
+        }
+      } catch (error) {
+        console.error("創建交易失敗:", error);
+        createTradeStatus.textContent = '創建交易失敗：' + error.message.replace('execution reverted: ', '');
+        createTradeStatus.className = 'status error';
+      }
+    }
+
+    // 購買卡片 (市場交易)
+    async function buyCard(tradeId, price) {
+      try {
+        await contract.buyerSign(tradeId, { value: price });
+
+        alert('購買成功！等待賣家確認轉移。');
+
+        // 重新載入交易列表
+        loadAvailableTrades();
+        loadMyTrades();
+      } catch (error) {
+        console.error("購買失敗:", error);
+        alert('購買失敗：' + error.message.replace('execution reverted: ', ''));
+      }
+    }
+
+    // 設置卡片價格 (僅管理員)
+    async function setCardPrice() {
+      if (!isOwner) {
+        alert('只有合約擁有者可以執行此操作。');
+        return;
+      }
+
+      const idolGroup = document.getElementById('idol-group').value.trim();
+      const idolMember = document.getElementById('idol-member').value.trim();
+      const cardNumber = document.getElementById('card-number').value.trim();
+      const listPriceEth = document.getElementById('list-price').value;
+      const photoURI = document.getElementById('photo-uri').value.trim();
+      const newPriceEth = document.getElementById('new-price').value;
+
+      const setPriceStatus = document.getElementById('set-price-status');
+
+      if (!newPriceEth || !idolGroup || !idolMember || !cardNumber || !listPriceEth || !photoURI) {
+        setPriceStatus.textContent = '請完整輸入所有欄位。';
+        setPriceStatus.className = 'status error';
+        return;
+      }
+
+      try {
+        setPriceStatus.innerHTML = '<span>處理中... <div class="loader"></div></span>';
+        setPriceStatus.className = 'status info';
+
+        const newPriceWei = ethers.utils.parseEther(newPriceEth);
+        const listPriceWei = ethers.utils.parseEther(listPriceEth);
+
+        await contract.setCardPrice(
+          newPriceWei,
+          idolGroup,
+          idolMember,
+          cardNumber,
+          listPriceWei,
+          photoURI
+        );
+
+        setPriceStatus.textContent = '卡片資訊設置成功！';
+        setPriceStatus.className = 'status success';
+      } catch (error) {
+        console.error("設置卡片資訊失敗:", error);
+        setPriceStatus.textContent = '設置卡片資訊失敗：' + error.message.replace('execution reverted: ', '');
+        setPriceStatus.className = 'status error';
+      }
+    }
+
+
+
+    // 審批卡片請求 (僅管理員)
+    async function approveTransfer(uid) {
+      if (!isOwner) {
+        alert('只有合約擁有者可以執行此操作。');
+        return;
+      }
+
+      try {
+        await contract.approveTransfer(uid);
+
+        alert('審批成功！');
+
+        // 重新載入待處理請求
+        loadPendingRequests();
+      } catch (error) {
+        console.error("審批失敗:", error);
+        alert('審批失敗：' + error.message.replace('execution reverted: ', ''));
+      }
+    }
+
+    // 初始化標籤頁切換
+    function initTabs() {
+      const tabs = document.querySelectorAll('.tab');
+      const tabContents = document.querySelectorAll('.tab-content');
+
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          // 移除所有標籤頁的 active 類
+          tabs.forEach(t => t.classList.remove('active'));
+          tabContents.forEach(tc => tc.classList.remove('active'));
+
+          // 為當前標籤頁添加 active 類
+          tab.classList.add('active');
+          const tabId = tab.getAttribute('data-tab');
+          document.getElementById(tabId).classList.add('active');
+        });
+      });
+    }
+
+    // 初始化頁面
+    document.addEventListener('DOMContentLoaded', () => {
+      initTabs();
+
+      // 綁定按鈕事件
+      document.getElementById('request-card-btn').addEventListener('click', bindCard);
+      document.getElementById('create-trade-btn').addEventListener('click', createTrade);
+      document.getElementById('set-price-btn').addEventListener('click', setCardPrice);
+    });
+
+    // 查看卡片詳情函數
+    window.viewCardDetails = async function (uid) {
+      console.log("🔍 查詢交易紀錄 for UID:", uid);
+      console.log("📍 合約地址:", contract.address);
+      console.log("📍 函數是否存在:", typeof contract.getTradesByUID);
+      const modal = document.getElementById('card-modal');
+      const content = document.getElementById('card-modal-content');
+      modal.style.display = 'flex';
+      content.innerHTML = '<p>載入中... <div class="loader"></div></p>';
+
+      try {
+        console.log("🔍 查看卡片詳情，UID:", uid);
+
+        if (!contract) {
+          content.innerHTML = '<p class="error">合約尚未連接，請先連接錢包。</p>';
+          return;
+        }
+
+        // 嘗試直接呼叫 TradeManager 的函數
+        console.log("🚀 呼叫 getTradesByUID...");
+        const trades = await contract.getTradesByUID(uid);
+        console.log("✅ 成功取得交易資料:", trades);
+
+        if (!trades || trades.length === 0) {
+          content.innerHTML = `
+                <h3>卡片詳情</h3>
+                <p><strong>UID:</strong> ${uid}</p>
+                <p>❗️ 此卡片尚未有交易紀錄。</p>
+                <p><em>提示：如果這是剛購買的卡片，交易紀錄可能需要幾分鐘才會出現。</em></p>
+            `;
+          return;
+        }
+
+        let html = `
+            <h3>卡片交易歷史</h3>
+            <p><strong>UID:</strong> ${uid}</p>
+            <table>
+                <tr><th>交易 ID</th><th>買家</th><th>賣家</th><th>價格</th><th>狀態</th><th>時間</th></tr>
+        `;
+
+        for (const trade of trades) {
+          const buyer = trade.buyer ? `${trade.buyer.slice(0, 6)}...${trade.buyer.slice(-4)}` : '—';
+          const seller = trade.seller ? `${trade.seller.slice(0, 6)}...${trade.seller.slice(-4)}` : '—';
+          const priceEth = ethers.utils.formatEther(trade.price);
+          const time = trade.timestamp > 0 ? new Date(trade.timestamp * 1000).toLocaleString() : '—';
+          const statusText = getStatusLabel(trade.status);
+
+          html += `<tr>
+                <td>#${trade.tradeId}</td>
+                <td>${buyer}</td>
+                <td>${seller}</td>
+                <td>${priceEth} ETH</td>
+                <td>${statusText}</td>
+                <td>${time}</td>
+            </tr>`;
+        }
+
+        html += `</table>`;
+        content.innerHTML = html;
+
+      } catch (err) {
+        console.error("❌ 載入交易詳情失敗:", err);
+        content.innerHTML = `
+            <h3>錯誤詳情</h3>
+            <p class="error">無法取得交易紀錄</p>
+            <details>
+                <summary>技術細節</summary>
+                <pre>${err.message}</pre>
+            </details>
+            <p><em>請確認：</em></p>
+            <ul>
+                <li>合約是否正確部署</li>
+                <li>UID 是否正確</li>
+                <li>是否有權限存取此資料</li>
+            </ul>
+        `;
+      }
+    };
+
+    // 加入 getStatusLabel 函數
+    function getStatusLabel(status) {
+      switch (status) {
+        case 0: return '<span class="trade-status status-created">已創建</span>';
+        case 1: return '<span class="trade-status status-buyer-signed">買家已簽署</span>';
+        case 2: return '<span class="trade-status status-seller-signed">賣家已簽署</span>';
+        case 5: return '<span class="trade-status status-completed">已完成</span>';
+        default: return `<span class="trade-status">狀態 ${status}</span>`;
+      }
+    }
+    let cardManagerContract;
+
+
+    async function checkCardManagerOwner() {
+      if (!contract || !userAccount) {
+        console.log("合約或用戶帳號尚未初始化");
+        return;
+      }
+
+      try {
+        // 你部署時的 CardManager 合約地址（請替換為你自己的）
+        //const cardManagerAddress = "0xC8c6E4176C9a23e886A9BcCcb80ABCbc3C5c2D65";
+
+        // CardManager 的簡易 ABI，只包含 owner 函數
+        const cardManagerAbi = [
+          "function owner() view returns (address)"
+        ];
+
+
+        // 使用現有 provider 和 signer
+        const provider = contract.provider;
+        const signer = provider.getSigner(userAccount);
+
+        // 建立 CardManager 合約物件
+        const cardManagerContract = new ethers.Contract(cardManagerAddress, cardManagerAbi, signer);
+
+        // 讀取 CardManager 的 owner
+        const ownerAddress = await cardManagerContract.owner();
+        console.log("CardManager 合約擁有者:", ownerAddress);
+        console.log("目前錢包地址:", userAccount);
+
+        if (ownerAddress.toLowerCase() === userAccount.toLowerCase()) {
+          console.log("你是 CardManager 的擁有者，可以執行管理操作。");
+        } else {
+          console.warn("你不是 CardManager 的擁有者，管理操作會被拒絕！");
+        }
+      } catch (error) {
+        console.error("檢查 CardManager 擁有者失敗:", error);
+      }
+    }
+
+
+  </script>
+  <div id="card-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.5); z-index: 9999; align-items: center; justify-content: center;">
+    <div
+      style="background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 700px; max-height: 80%; overflow-y: auto; position: relative;">
+      <span id="card-modal-close"
+        style="position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer;">&times;</span>
+      <h2>卡片交易詳情</h2>
+      <div id="card-modal-content">
+        <p>載入中...
+        <div class="loader"></div>
+        </p>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>

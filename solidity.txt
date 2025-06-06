@@ -1,0 +1,643 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+
+contract IdolCardSystem is ERC721, ERC721URIStorage, ERC721Enumerable, Ownable {
+    uint256 public nextTokenId;
+    uint256 public cardPrice = 0.01 ether;
+
+    // 新增卡片詳細資訊
+    struct CardInfo {
+        string idolGroup; // 偶像團體
+        string member; // 成員
+        string cardNumber; // 卡號
+        uint256 listPrice; // 上架價格 (ETH)
+        string photoURI; // 卡片照片(可空)
+    }
+
+    // 預設卡片資訊
+    CardInfo public defaultCardInfo;
+
+    mapping(string => uint256) private uidToTokenId;
+    mapping(uint256 => string) private tokenIdToUID;
+    mapping(string => bool) public uidUsed;
+    mapping(string => PendingTransfer) public pendingTransfers;
+    mapping(uint256 => CardInfo) public tokenIdToCardInfo;
+
+    // 存儲所有上架卡片的UID列表
+    string[] public allCardUIDs;
+
+    constructor(address initialOwner)
+        ERC721("IdolCard", "IDOL")
+        Ownable(initialOwner)
+    {
+        // 初始化預設卡片資訊
+        defaultCardInfo = CardInfo("", "", "", 0, "");
+    }
+
+    event CardPurchased(address indexed buyer, uint256 amount, string uid);
+    event CardRequested(address indexed buyer, string uid);
+    event CardApproved(string uid, address indexed buyer, uint256 tokenId);
+    event CardInfoUpdated(
+        string idolGroup,
+        string member,
+        string cardNumber,
+        uint256 listPrice,
+        string photoURI
+    );
+    event CardRequestRejected(string uid, address buyer);
+
+    mapping(address => uint256) public prepaidAmount;
+
+    function purchaseCard() external payable {
+        require(msg.value == cardPrice, "Incorrect ETH sent");
+        prepaidAmount[msg.sender] += msg.value;
+        emit CardPurchased(msg.sender, msg.value, "");
+    }
+
+    struct PendingTransfer {
+        address buyer;
+        uint256 amount;
+        bool approved;
+    }
+
+    // 新增 uid 映射: uid => 是否使用過（可選用）
+    mapping(string => bool) public cardUIDUsed;
+    // 由 uid 指向卡片資訊（用來多批管理）
+    mapping(string => CardInfo) public uidToCardInfo;
+    // 添加時間戳記錄
+    mapping(string => uint256) public requestTimestamps;
+
+    // 新增事件，帶回 uid
+    event CardInfoUpdatedWithUID(
+        string uid,
+        string idolGroup,
+        string member,
+        string cardNumber,
+        uint256 listPrice,
+        string photoURI
+    );
+
+    function setCardPrice(
+        uint256 newPrice,
+        string memory idolGroup,
+        string memory member,
+        string memory cardNumber,
+        uint256 listPrice,
+        string memory photoURI
+    ) external onlyOwner returns (string memory) {
+        cardPrice = newPrice;
+
+        // 產生唯一 UID (16 進制字串)
+        bytes32 hash = keccak256(
+            abi.encodePacked(
+                idolGroup,
+                member,
+                cardNumber,
+                listPrice,
+                photoURI,
+                block.timestamp,
+                block.number
+            )
+        );
+        string memory uid = toHexString(hash);
+
+        require(!cardUIDUsed[uid], "UID already used");
+
+        // 將卡片資訊儲存到 mapping，並標記 UID 已使用
+        CardInfo memory newCardInfo = CardInfo(
+            idolGroup,
+            member,
+            cardNumber,
+            listPrice,
+            photoURI
+        );
+        uidToCardInfo[uid] = newCardInfo;
+        cardUIDUsed[uid] = true;
+        
+        // 將新的UID添加到上架卡片列表
+        allCardUIDs.push(uid);
+
+        // 更新預設卡片資訊（你原本合約中此行也要決定是否保留）
+        defaultCardInfo = newCardInfo;
+
+        emit CardInfoUpdatedWithUID(
+            uid,
+            idolGroup,
+            member,
+            cardNumber,
+            listPrice,
+            photoURI
+        );
+
+        return uid; // 回傳新 UID，前端可透過 call 取得
+    }
+
+    // 輔助函數：bytes32 轉 16 進制字串
+    function toHexString(bytes32 data) internal pure returns (string memory) {
+        bytes memory hexChars = "0123456789abcdef";
+        bytes memory str = new bytes(64);
+        for (uint256 i = 0; i < 32; i++) {
+            str[i * 2] = hexChars[uint8(data[i] >> 4)];
+            str[i * 2 + 1] = hexChars[uint8(data[i] & 0x0f)];
+        }
+        return string(str);
+    }
+
+    function requestCard(string memory uid) public {
+        require(!uidUsed[uid], "UID already bound");
+        require(pendingTransfers[uid].buyer == address(0), "Already requested");
+        require(
+            prepaidAmount[msg.sender] >= cardPrice,
+            "Card not purchased yet"
+        );
+
+        prepaidAmount[msg.sender] = 0;
+        pendingTransfers[uid] = PendingTransfer(msg.sender, cardPrice, false);
+        requestTimestamps[uid] = block.timestamp;
+
+        emit CardRequested(msg.sender, uid);
+    }
+
+    function approveTransfer(string memory uid) external onlyOwner {
+        require(
+            pendingTransfers[uid].amount == cardPrice,
+            "Payment not received"
+        );
+        require(pendingTransfers[uid].buyer != address(0), "No request");
+        require(!pendingTransfers[uid].approved, "Already approved");
+        require(!uidUsed[uid], "UID already bound");
+
+        address buyer = pendingTransfers[uid].buyer;
+        uint256 tokenId = nextTokenId;
+        _safeMint(buyer, tokenId);
+
+        // 設定卡片的 URI 和資訊
+        if (bytes(defaultCardInfo.photoURI).length > 0) {
+            _setTokenURI(tokenId, defaultCardInfo.photoURI);
+        }
+
+        // 將預設卡片資訊指派給新發行的代幣
+        tokenIdToCardInfo[tokenId] = defaultCardInfo;
+
+        uidUsed[uid] = true;
+        uidToTokenId[uid] = tokenId;
+        tokenIdToUID[tokenId] = uid;
+        nextTokenId++;
+
+        payable(owner()).transfer(cardPrice);
+        pendingTransfers[uid].approved = true;
+
+        emit CardApproved(uid, buyer, tokenId);
+    }
+
+    function rejectTransfer(string memory uid) external onlyOwner {
+        require(pendingTransfers[uid].buyer != address(0), "No request exists");
+        require(!pendingTransfers[uid].approved, "Already approved");
+        
+        address buyer = pendingTransfers[uid].buyer;
+        uint256 amount = pendingTransfers[uid].amount;
+        
+        // 退還購買費用
+        payable(buyer).transfer(amount);
+        
+        // 清除請求記錄
+        delete pendingTransfers[uid];
+        delete requestTimestamps[uid];
+        
+        emit CardRequestRejected(uid, buyer);
+    }
+
+    function getOwnerByUID(string memory uid) external view returns (address) {
+        require(uidUsed[uid], "UID not found");
+        return ownerOf(uidToTokenId[uid]);
+    }
+
+    function isBound(uint256 tokenId) external view returns (bool) {
+        return bytes(tokenIdToUID[tokenId]).length != 0;
+    }
+
+    // 取得卡片詳細資訊
+    function getCardInfo(uint256 tokenId)
+        external
+        view
+        returns (
+            string memory idolGroup,
+            string memory member,
+            string memory cardNumber,
+            uint256 listPrice,
+            string memory photoURI
+        )
+    {
+        CardInfo memory info = tokenIdToCardInfo[tokenId];
+        return (
+            info.idolGroup,
+            info.member,
+            info.cardNumber,
+            info.listPrice,
+            info.photoURI
+        );
+    }
+
+    // 1. 獲取公司上架的所有卡片
+    struct CardDisplay {
+        string uid;
+        string idolGroup;
+        string member;
+        string cardNumber;
+        uint256 listPrice;
+        string photoURI;
+        bool isSold;
+    }
+    
+    function getCompanyCards() external view returns (CardDisplay[] memory) {
+        uint256 count = allCardUIDs.length;
+        CardDisplay[] memory cards = new CardDisplay[](count);
+        
+        for (uint256 i = 0; i < count; i++) {
+            string memory uid = allCardUIDs[i];
+            CardInfo memory info = uidToCardInfo[uid];
+            bool isSold = uidUsed[uid];
+            
+            cards[i] = CardDisplay({
+                uid: uid,
+                idolGroup: info.idolGroup,
+                member: info.member,
+                cardNumber: info.cardNumber,
+                listPrice: info.listPrice,
+                photoURI: info.photoURI,
+                isSold: isSold
+            });
+        }
+        
+        return cards;
+    }
+    
+    // 2. 獲取所有可購買的卡片
+    function getAvailableCards() external view returns (CardDisplay[] memory) {
+        uint256 availableCount = 0;
+        
+        // 計算可用卡片數量
+        for (uint256 i = 0; i < allCardUIDs.length; i++) {
+            if (!uidUsed[allCardUIDs[i]]) {
+                availableCount++;
+            }
+        }
+        
+        CardDisplay[] memory availableCards = new CardDisplay[](availableCount);
+        uint256 index = 0;
+        
+        for (uint256 i = 0; i < allCardUIDs.length; i++) {
+            string memory uid = allCardUIDs[i];
+            if (!uidUsed[uid]) {
+                CardInfo memory info = uidToCardInfo[uid];
+                
+                availableCards[index] = CardDisplay({
+                    uid: uid,
+                    idolGroup: info.idolGroup,
+                    member: info.member,
+                    cardNumber: info.cardNumber,
+                    listPrice: info.listPrice,
+                    photoURI: info.photoURI,
+                    isSold: false
+                });
+                
+                index++;
+            }
+        }
+        
+        return availableCards;
+    }
+    
+    // 3. 購買特定卡片並返回UID
+    function purchaseSpecificCard(string memory uid) external payable returns (string memory) {
+        require(!uidUsed[uid], "Card already sold");
+        require(cardUIDUsed[uid], "Card does not exist");
+        
+        CardInfo memory info = uidToCardInfo[uid];
+        require(msg.value == info.listPrice, "Incorrect payment amount");
+        
+        // 記錄預付金額
+        prepaidAmount[msg.sender] += msg.value;
+        
+        // 自動發起綁定請求
+        requestCard(uid);
+        
+        emit CardPurchased(msg.sender, msg.value, uid);
+        
+        return uid;
+    }
+    
+    // 4. 獲取待處理的卡片綁定請求
+    struct PendingRequest {
+        string uid;
+        address buyer;
+        uint256 amount;
+        uint256 timestamp;
+    }
+    
+    function getPendingCardRequests() external view returns (PendingRequest[] memory) {
+        uint256 pendingCount = 0;
+        
+        // 計算待處理請求數量
+        for (uint256 i = 0; i < allCardUIDs.length; i++) {
+            string memory uid = allCardUIDs[i];
+            if (pendingTransfers[uid].buyer != address(0) && !pendingTransfers[uid].approved && !uidUsed[uid]) {
+                pendingCount++;
+            }
+        }
+        
+        PendingRequest[] memory requests = new PendingRequest[](pendingCount);
+        uint256 index = 0;
+        
+        for (uint256 i = 0; i < allCardUIDs.length; i++) {
+            string memory uid = allCardUIDs[i];
+            if (pendingTransfers[uid].buyer != address(0) && !pendingTransfers[uid].approved && !uidUsed[uid]) {
+                requests[index] = PendingRequest({
+                    uid: uid,
+                    buyer: pendingTransfers[uid].buyer,
+                    amount: pendingTransfers[uid].amount,
+                    timestamp: requestTimestamps[uid]
+                });
+                
+                index++;
+            }
+        }
+        
+        return requests;
+    }
+    
+    // 6. 獲取用戶擁有的卡片
+    function getUserCards(address user) external view returns (CardDisplay[] memory) {
+        uint256 balance = balanceOf(user);
+        CardDisplay[] memory userCards = new CardDisplay[](balance);
+        
+        for (uint256 i = 0; i < balance; i++) {
+            uint256 tokenId = tokenOfOwnerByIndex(user, i);
+            string memory uid = tokenIdToUID[tokenId];
+            CardInfo memory info = tokenIdToCardInfo[tokenId];
+            
+            userCards[i] = CardDisplay({
+                uid: uid,
+                idolGroup: info.idolGroup,
+                member: info.member,
+                cardNumber: info.cardNumber,
+                listPrice: info.listPrice,
+                photoURI: info.photoURI,
+                isSold: true
+            });
+        }
+        
+        return userCards;
+    }
+
+    // 🔁 交易關聯
+    enum TradeStatus {
+        Created,
+        BuyerSigned,
+        SellerSigned,
+        RefundRequested,
+        Refunded,
+        Completed
+    }
+
+    struct Trade {
+        uint256 tradeId;
+        uint256 tokenId;
+        address payable seller;
+        address payable buyer;
+        uint256 price;
+        uint256 timestamp;
+        TradeStatus status;
+    }
+
+    uint256 public tradeCounter;
+    mapping(uint256 => Trade) public trades;
+    mapping(uint256 => uint256) public tokenToTrade;
+
+    event TradeCreated(
+        uint256 tradeId,
+        uint256 tokenId,
+        address seller,
+        uint256 price
+    );
+    event BuyerSigned(uint256 tradeId, address buyer);
+    event SellerSigned(uint256 tradeId);
+    event RefundRequested(uint256 tradeId);
+    event Refunded(uint256 tradeId);
+    event TradeCompleted(uint256 tradeId);
+
+    function createTrade(string memory uid, uint256 price) external {
+        require(uidUsed[uid], "UID not bound");
+        uint256 tokenId = uidToTokenId[uid];
+        require(ownerOf(tokenId) == msg.sender, "You are not the owner");
+
+        uint256 tradeId = ++tradeCounter;
+        trades[tradeId] = Trade({
+            tradeId: tradeId,
+            tokenId: tokenId,
+            seller: payable(msg.sender),
+            buyer: payable(address(0)),
+            price: price,
+            timestamp: 0,
+            status: TradeStatus.Created
+        });
+
+        tokenToTrade[tokenId] = tradeId;
+        emit TradeCreated(tradeId, tokenId, msg.sender, price);
+    }
+
+    function buyerSign(uint256 tradeId) external payable {
+        Trade storage t = trades[tradeId];
+        require(t.status == TradeStatus.Created, "Trade not available");
+        require(msg.value == t.price, "Incorrect ETH");
+
+        t.buyer = payable(msg.sender);
+        t.status = TradeStatus.BuyerSigned;
+        t.timestamp = block.timestamp;
+
+        emit BuyerSigned(tradeId, msg.sender);
+    }
+
+    function sellerSign(uint256 tradeId) external {
+        Trade storage t = trades[tradeId];
+        require(msg.sender == t.seller, "Only seller");
+        require(t.status == TradeStatus.BuyerSigned, "Buyer not signed");
+
+        safeTransferFrom(t.seller, t.buyer, t.tokenId);
+        t.status = TradeStatus.SellerSigned;
+
+        emit SellerSigned(tradeId);
+    }
+
+    function requestRefund(uint256 tradeId) external {
+        Trade storage t = trades[tradeId];
+        require(msg.sender == t.buyer, "Only buyer");
+        require(t.status == TradeStatus.SellerSigned, "Not refundable");
+
+        t.status = TradeStatus.RefundRequested;
+        emit RefundRequested(tradeId);
+    }
+
+    function confirmRefund(uint256 tradeId) external {
+        Trade storage t = trades[tradeId];
+        require(msg.sender == t.seller, "Only seller");
+        require(t.status == TradeStatus.RefundRequested, "No refund requested");
+
+        safeTransferFrom(t.buyer, t.seller, t.tokenId);
+        t.buyer.transfer(t.price);
+        t.status = TradeStatus.Refunded;
+
+        emit Refunded(tradeId);
+    }
+
+    function finalize(uint256 tradeId) external {
+        Trade storage t = trades[tradeId];
+        require(
+            msg.sender == t.buyer || block.timestamp >= t.timestamp + 3 days,
+            "Only buyer or after 72h"
+        );
+        require(t.status == TradeStatus.SellerSigned, "Not finalized");
+
+        t.seller.transfer(t.price);
+        t.status = TradeStatus.Completed;
+
+        emit TradeCompleted(tradeId);
+    }
+
+    // 7. 獲取用戶參與的交易
+    function getUserTrades(address user) external view returns (Trade[] memory) {
+        uint256 tradeCount = 0;
+        
+        // 計算用戶參與的交易數量
+        for (uint256 i = 1; i <= tradeCounter; i++) {
+            if (trades[i].seller == user || trades[i].buyer == user) {
+                tradeCount++;
+            }
+        }
+        
+        Trade[] memory userTrades = new Trade[](tradeCount);
+        uint256 index = 0;
+        
+        for (uint256 i = 1; i <= tradeCounter; i++) {
+            if (trades[i].seller == user || trades[i].buyer == user) {
+                userTrades[index] = trades[i];
+                index++;
+            }
+        }
+        
+        return userTrades;
+    }
+    
+    // 8. 獲取交易統計數據
+    function getTradeAnalytics() external view onlyOwner returns (
+        uint256 totalTrades,
+        uint256 completedTrades,
+        uint256 pendingTrades,
+        uint256 totalVolume
+    ) {
+        totalTrades = tradeCounter;
+        uint256 _completedTrades = 0;
+        uint256 _pendingTrades = 0;
+        uint256 _totalVolume = 0;
+        
+        for (uint256 i = 1; i <= tradeCounter; i++) {
+            Trade memory t = trades[i];
+            
+            if (t.status == TradeStatus.Completed) {
+                _completedTrades++;
+                _totalVolume += t.price;
+            } else if (t.status == TradeStatus.Created || t.status == TradeStatus.BuyerSigned || t.status == TradeStatus.SellerSigned) {
+                _pendingTrades++;
+            }
+        }
+        
+        return (totalTrades, _completedTrades, _pendingTrades, _totalVolume);
+    }
+
+    function getCardPrice() external view returns (uint256) {
+        return cardPrice;
+    }
+
+    function getAvailableTrades() external view returns (Trade[] memory) {
+        uint count = 0;
+        for (uint i = 1; i <= tradeCounter; i++) {
+            if (trades[i].status == TradeStatus.Created) {
+                count++;
+            }
+        }
+
+        Trade[] memory result = new Trade[](count);
+        uint index = 0;
+
+        for (uint i = 1; i <= tradeCounter; i++) {
+            if (trades[i].status == TradeStatus.Created) {
+                result[index] = trades[i];
+                index++;
+            }
+        }
+
+        return result;
+    }
+
+    function getTrade(uint256 tradeId)
+        external
+        view
+        returns (
+            uint256 tokenId,
+            address seller,
+            address buyer,
+            uint256 price,
+            TradeStatus status,
+            uint256 deadline
+        )
+    {
+        Trade memory t = trades[tradeId];
+        return (
+            t.tokenId,
+            t.seller,
+            t.buyer,
+            t.price,
+            t.status,
+            t.timestamp + 3 days
+        );
+    }
+    
+    // ERC721URIStorage & ERC721Enumerable 需要的覆寫函數
+    function _update(address to, uint256 tokenId, address auth)
+        internal
+        override(ERC721, ERC721Enumerable)
+        returns (address)
+    {
+        return super._update(to, tokenId, auth);
+    }
+
+    function _increaseBalance(address account, uint128 value)
+        internal
+        override(ERC721, ERC721Enumerable)
+    {
+        super._increaseBalance(account, value);
+    }
+
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        override(ERC721, ERC721URIStorage)
+        returns (string memory)
+    {
+        return super.tokenURI(tokenId);
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721, ERC721URIStorage, ERC721Enumerable)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+}
