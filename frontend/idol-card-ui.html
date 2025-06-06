@@ -268,6 +268,8 @@
           <input type="number" id="list-price" placeholder="卡片上架價 (ETH)" step="0.001">
           <input type="text" id="photo-uri" placeholder="照片 URI (e.g., ipfs://xxx)">
           <input type="number" id="new-price" placeholder="合約內部價格 (ETH)" step="0.001">
+          <input type="number" id="card-amount" placeholder="發行數量" min="1" step="1">
+
 
           <button id="set-price-btn">設置卡片資訊</button>
           <div id="set-price-status"></div>
@@ -442,13 +444,15 @@
       "function getAvailableCards() external view returns (tuple(string uid, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI, bool isSold)[])",
       "function getPendingCardRequests() external view returns (tuple(string uid, address buyer, uint256 amount, uint256 timestamp)[])",
       "function getUserCards(address user) external view returns (tuple(string uid, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI, bool isSold)[])",
-      "function purchaseSpecificCard(string uid, address recipient) external payable returns (string)",
+      // "function purchaseSpecificCard(string uid, address recipient) external payable returns (string)",
       "function bindCardUID(string uid, address recipient) external",
       "function getCardPrice() external view returns (uint256)",
       "function requestCard(string uid, address recipient) external",
       "function approveTransfer(string uid) external",
       "function rejectTransfer(string uid) external",
-      "function setCardPrice(uint256 newPrice, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI) external returns (string)",
+      //"function setCardPrice(uint256 newPrice, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI) external returns (string)",
+      "function createCardType(string idolGroup, string member, string baseCardNumber, string photoURI, uint256 listPrice, uint256 stock) external returns (string)",
+      "function purchaseCardType(string uid, address recipient) external payable returns (uint256)",
 
       // TradeManager 相關函式
       "function tradeManager() view returns (address)",
@@ -521,7 +525,7 @@
 
       // 各角色功能按鈕事件
       // 公司角色
-      document.getElementById('set-price-btn').addEventListener('click', setCardPrice);
+      document.getElementById('set-price-btn').addEventListener('click', createCardType);
 
       // 第一手買家角色
       document.getElementById('request-card-btn').addEventListener('click', bindCard);
@@ -1280,7 +1284,7 @@
                 <td>${card.cardNumber}</td>
                 <td>${priceEth} ETH</td>
                 <td>
-                  <button onclick="purchaseSpecificCard('${card.uid}', '${priceWei}')">購買</button>
+                  <button onclick="purchaseCardType('${card.uid}', '${priceWei}')">購買</button>
                 </td>
               </tr>
             `;
@@ -1298,7 +1302,7 @@
     }
 
     // 將操作函數掛到window對象上
-    window.purchaseSpecificCard = purchaseSpecificCard;
+    window.purchaseCardType = purchaseCardType;
     window.approveTransfer = approveTransfer;
     window.buyCard = buyCard;
     window.sellerSign = sellerSign;
@@ -1376,16 +1380,16 @@
 
 
     // 添加購買特定卡片的函數
-    async function purchaseSpecificCard(uid, priceWei) {
+    // 改名 purchaseCardType
+    async function purchaseCardType(uid, priceWei) {
       const purchaseStatus = document.getElementById('purchase-status');
       try {
         purchaseStatus.innerHTML = '<span>處理中... <div class="loader"></div></span>';
         purchaseStatus.className = 'status info';
 
-        console.log("準備購買卡片:", uid);
+        console.log("準備購買卡片類型:", uid);
         console.log("價格(Wei):", priceWei);
 
-        // 轉成 BigNumber，避免格式錯誤
         let valueForTx;
         try {
           valueForTx = ethers.BigNumber.from(priceWei);
@@ -1395,81 +1399,22 @@
           return;
         }
 
-        // 從頁面取得已連接錢包地址 (假設 connectionStatus 是該元素ID)
-        const connectionStatus = document.getElementById('connection-status');
-        if (!connectionStatus || !connectionStatus.textContent) {
-          purchaseStatus.innerHTML = `<div class="status error">找不到已連接錢包地址，請先連接錢包。</div>`;
-          purchaseStatus.className = 'status error';
-          return;
-        }
-        // 假設 textContent 格式是 '已連接到錢包：0x1234...abcd'
-        // 只取地址部分，去掉前綴
-        const prefix = '已連接到錢包：';
-        let signerAddress = connectionStatus.textContent.trim();
-        if (signerAddress.startsWith(prefix)) {
-          signerAddress = signerAddress.slice(prefix.length).trim();
-        }
-
-        // 簡單驗證地址格式（可改用 ethers.utils.isAddress）
-        if (!ethers.utils.isAddress(signerAddress)) {
-          purchaseStatus.innerHTML = `<div class="status error">錢包地址格式錯誤: ${signerAddress}</div>`;
-          purchaseStatus.className = 'status error';
-          return;
-        }
-
-        console.log("接收者錢包地址:", signerAddress);
-        console.log("傳入 UID:", uid);
-        // callStatic 模擬交易，帶 uid 與 recipient
-        try {
-          const returnedUidCheck = await contract.callStatic.purchaseSpecificCard(uid, signerAddress, {
-            value: valueForTx,
-            gasLimit: 500000,
-          });
-          console.log("模擬成功，返回UID:", returnedUidCheck);
-        } catch (staticError) {
-          console.warn("模擬失敗，可能交易會 revert:", staticError);
-          // 依需求決定是否return
-          // return;
-        }
-
-        // 發送交易，帶 uid 與 recipient
-        const tx = await contract.purchaseSpecificCard(uid, signerAddress, {
+        // 發送交易，不用 signerAddress，直接合約 mint
+        const tx = await contract.purchaseCardType(uid, {
           value: valueForTx,
           gasLimit: 500000,
         });
-        console.log("交易發送:", tx);
 
         const receipt = await tx.wait();
         console.log("交易確認:", receipt);
 
-        // 🔥 加上這段：查詢 tokenId 並記錄交易
-        try {
-          const tokenId = await contract.uidToTokenId(uid);
-          console.log("對應 tokenId:", tokenId.toString());
-
-          const tx2 = await contract.recordPrimaryTrade(uid, tokenId, signerAddress, valueForTx);
-          await tx2.wait();
-          console.log("✅ 一手交易已記錄到 TradeManager");
-        } catch (e) {
-          console.warn("⚠️ 無法記錄一手交易:", e.message);
-        }
-
         purchaseStatus.innerHTML = `
           <div class="status success">
-            <p>購買成功！</p>
-            <p>請掃描或輸入卡片 UID</p>
-            <p>並按下「綁定卡片」按鈕以綁上。</p>
+            <p>購買成功！卡片已轉入您的錢包。</p>
           </div>
         `;
 
-        // 自動填入綁定欄位
-        const cardUidInput = document.getElementById('card-uid');
-        if (cardUidInput) {
-          cardUidInput.value = uid;
-        }
-
-        // 重新載入市場卡片
-        await loadAvailableCardsMarket();
+        await loadAvailableCardsMarket(); // 重新載入市場，更新剩餘張數
 
       } catch (error) {
         console.error("購買卡片失敗:", error);
@@ -1485,12 +1430,6 @@
         purchaseStatus.className = 'status error';
       }
     }
-    document.getElementById('card-modal-close').addEventListener('click', () => {
-      const modal = document.getElementById('card-modal');
-      if (modal) {
-        modal.style.display = 'none';
-      }
-    });
 
 
 
@@ -1775,7 +1714,8 @@
     }
 
     // 設置卡片價格 (僅管理員)
-    async function setCardPrice() {
+    // 改名 createCardType
+    async function createCardType() {
       if (!isOwner) {
         alert('只有合約擁有者可以執行此操作。');
         return;
@@ -1783,14 +1723,14 @@
 
       const idolGroup = document.getElementById('idol-group').value.trim();
       const idolMember = document.getElementById('idol-member').value.trim();
-      const cardNumber = document.getElementById('card-number').value.trim();
+      const cardNumber = document.getElementById('card-number').value.trim();  // baseCardNumber
       const listPriceEth = document.getElementById('list-price').value;
       const photoURI = document.getElementById('photo-uri').value.trim();
-      const newPriceEth = document.getElementById('new-price').value;
+      const cardAmount = parseInt(document.getElementById('card-amount').value);
 
       const setPriceStatus = document.getElementById('set-price-status');
 
-      if (!newPriceEth || !idolGroup || !idolMember || !cardNumber || !listPriceEth || !photoURI) {
+      if (!idolGroup || !idolMember || !cardNumber || !listPriceEth || !photoURI || cardAmount <= 0) {
         setPriceStatus.textContent = '請完整輸入所有欄位。';
         setPriceStatus.className = 'status error';
         return;
@@ -1800,26 +1740,29 @@
         setPriceStatus.innerHTML = '<span>處理中... <div class="loader"></div></span>';
         setPriceStatus.className = 'status info';
 
-        const newPriceWei = ethers.utils.parseEther(newPriceEth);
         const listPriceWei = ethers.utils.parseEther(listPriceEth);
 
-        await contract.setCardPrice(
-          newPriceWei,
+        const tx = await contract.createCardType(
           idolGroup,
           idolMember,
-          cardNumber,
+          cardNumber, // 基礎卡號
+          photoURI,
           listPriceWei,
-          photoURI
+          cardAmount
         );
 
-        setPriceStatus.textContent = '卡片資訊設置成功！';
+        await tx.wait();
+
+        setPriceStatus.textContent = `成功發行 ${cardAmount} 張卡片款式！`;
         setPriceStatus.className = 'status success';
+
       } catch (error) {
         console.error("設置卡片資訊失敗:", error);
         setPriceStatus.textContent = '設置卡片資訊失敗：' + error.message.replace('execution reverted: ', '');
         setPriceStatus.className = 'status error';
       }
     }
+
 
 
 
@@ -1867,9 +1810,9 @@
       initTabs();
 
       // 綁定按鈕事件
-      document.getElementById('request-card-btn').addEventListener('click', bindCard);
+      // document.getElementById('request-card-btn').addEventListener('click', bindCard);
       document.getElementById('create-trade-btn').addEventListener('click', createTrade);
-      document.getElementById('set-price-btn').addEventListener('click', setCardPrice);
+      document.getElementById('set-price-btn').addEventListener('click', createCardType);
     });
 
     // 查看卡片詳情函數

@@ -79,60 +79,6 @@ contract CardManager is NFTBase {
     );
     event CardRequestRejected(string uid, address buyer);
 
-    function setCardPrice(
-        uint256 newPrice,
-        string memory idolGroup,
-        string memory member,
-        string memory cardNumber,
-        uint256 listPrice,
-        string memory photoURI
-    ) external onlyOwnerOrMainContract returns (string memory) {
-        cardPrice = newPrice;
-
-        // 產生唯一 UID (16 進制字串)
-        bytes32 hash = keccak256(
-            abi.encodePacked(
-                idolGroup,
-                member,
-                cardNumber,
-                listPrice,
-                photoURI,
-                block.timestamp,
-                block.number
-            )
-        );
-        string memory uid = StringUtils.toHexString(hash);
-
-        require(!cardUIDUsed[uid], "UID already used");
-
-        // 將卡片資訊儲存到 mapping，並標記 UID 已使用
-        CardInfo memory newCardInfo = CardInfo(
-            idolGroup,
-            member,
-            cardNumber,
-            listPrice,
-            photoURI
-        );
-        uidToCardInfo[uid] = newCardInfo;
-        cardUIDUsed[uid] = true;
-
-        // 將新的UID添加到上架卡片列表
-        allCardUIDs.push(uid);
-
-        // 更新預設卡片資訊（你原本合約中此行也要決定是否保留）
-        defaultCardInfo = newCardInfo;
-
-        emit CardInfoUpdatedWithUID(
-            uid,
-            idolGroup,
-            member,
-            cardNumber,
-            listPrice,
-            photoURI
-        );
-
-        return uid; // 回傳新 UID，前端可透過 call 取得
-    }
     function getCardPrice() external view returns (uint256) {
         return cardPrice;
     }
@@ -408,4 +354,142 @@ contract CardManager is NFTBase {
         tokenIdToUID[tokenId] = uid;
         phase[tokenId] = 3; // 設為已購買已綁定
     }
+    // 新增：卡片款式資料結構
+    struct CardType {
+        string idolGroup;
+        string member;
+        string baseCardNumber;
+        string photoURI;
+        uint256 listPrice;
+        uint256 totalStock;
+        uint256 remainingStock;
+        bool exists;
+    }
+
+    // UID -> CardType
+    mapping(string => CardType) public cardTypes;
+    string[] public allCardTypeUIDs;  // 紀錄所有上架的卡片款式
+
+    event CardTypeCreated(string uid, string idolGroup, string member, uint256 stock, uint256 price);
+
+    // 新增：批量上架卡片款式
+    function createCardType(
+        string memory idolGroup,
+        string memory member,
+        string memory baseCardNumber,
+        string memory photoURI,
+        uint256 listPrice,
+        uint256 stock
+    ) external onlyOwnerOrMainContract returns (string memory) {
+        require(stock > 0, "Stock must be greater than zero");
+        require(listPrice > 0, "Price must be greater than zero");
+
+        bytes32 hash = keccak256(
+            abi.encodePacked(
+                idolGroup,
+                member,
+                baseCardNumber,
+                listPrice,
+                photoURI,
+                block.timestamp,
+                block.number
+            )
+        );
+        string memory uid = StringUtils.toHexString(hash);
+
+        require(!cardTypes[uid].exists, "CardType already exists");
+
+        cardTypes[uid] = CardType({
+            idolGroup: idolGroup,
+            member: member,
+            baseCardNumber: baseCardNumber,
+            photoURI: photoURI,
+            listPrice: listPrice,
+            totalStock: stock,
+            remainingStock: stock,
+            exists: true
+        });
+
+        allCardTypeUIDs.push(uid);
+
+        emit CardTypeCreated(uid, idolGroup, member, stock, listPrice);
+        return uid;
+    }
+
+    // 購買卡片：檢查款式剩餘庫存 -> Mint NFT
+    function purchaseCardType(string memory uid) external payable returns (uint256) {
+        CardType storage cardType = cardTypes[uid];
+        require(cardType.exists, "CardType does not exist");
+        require(cardType.remainingStock > 0, "Sold out");
+        require(msg.value == cardType.listPrice, "Incorrect price");
+
+        uint256 tokenId = nextTokenId;
+        _safeMint(msg.sender, tokenId);
+
+        // Set Token URI
+        if (bytes(cardType.photoURI).length > 0) {
+            _setTokenURI(tokenId, cardType.photoURI);
+        }
+
+        // 紀錄卡片詳細資料
+        CardInfo memory newCardInfo = CardInfo(
+            cardType.idolGroup,
+            cardType.member,
+            cardType.baseCardNumber,
+            cardType.listPrice,
+            cardType.photoURI
+        );
+        tokenIdToCardInfo[tokenId] = newCardInfo;
+
+        // UID 綁定
+        tokenIdToUID[tokenId] = uid;
+        phase[tokenId] = 3;  // 直接購買已綁定
+        uidUsed[uid] = true; // 不讓 UID 被重複用
+
+        uidToTokenId[uid] = tokenId;
+
+        cardType.remainingStock--;  // 購買扣庫存
+        nextTokenId++;
+
+        // 把錢轉給 owner
+        payable(owner()).transfer(msg.value);
+
+        emit CardPurchased(msg.sender, msg.value, uid);
+        emit CardApproved(uid, msg.sender, tokenId);
+        return tokenId;
+    }
+
+    // 查看所有上架卡片款式
+    function getAvailableCardTypes() external view returns (CardDisplay[] memory) {
+        uint256 count = 0;
+        for (uint256 i = 0; i < allCardTypeUIDs.length; i++) {
+            if (cardTypes[allCardTypeUIDs[i]].remainingStock > 0) {
+                count++;
+            }
+        }
+
+        CardDisplay[] memory cards = new CardDisplay[](count);
+        uint256 index = 0;
+
+        for (uint256 i = 0; i < allCardTypeUIDs.length; i++) {
+            string memory uid = allCardTypeUIDs[i];
+            CardType memory ctype = cardTypes[uid];
+
+            if (ctype.remainingStock > 0) {
+                cards[index] = CardDisplay({
+                    uid: uid,
+                    idolGroup: ctype.idolGroup,
+                    member: ctype.member,
+                    cardNumber: ctype.baseCardNumber,
+                    listPrice: ctype.listPrice,
+                    photoURI: ctype.photoURI,
+                    isSold: false  // 款式不是單張卡，所以這裡寫 false
+                });
+                index++;
+            }
+        }
+
+        return cards;
+    }
+
 }

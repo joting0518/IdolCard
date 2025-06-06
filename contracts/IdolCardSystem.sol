@@ -41,23 +41,22 @@ interface ICardManager {
         address user
     ) external view returns (CardDisplay[] memory);
 
-    function purchaseSpecificCard(
-        string memory uid,
-        address recipient
-    ) external payable returns (string memory);
+    function createCardType(
+        string memory idolGroup,
+        string memory member,
+        string memory baseCardNumber,
+        string memory photoURI,
+        uint256 listPrice,
+        uint256 stock
+    ) external returns (string memory);
+
+    function purchaseCardType(string memory uid) external payable returns (uint256);
+
     function bindUID(string memory uid, address recipient) external;
     function getCardPrice() external view returns (uint256);
     function requestCard(string memory uid, address recipient) external;
     function approveTransfer(string memory uid) external;
     function rejectTransfer(string memory uid) external;
-    function setCardPrice(
-        uint256 newPrice,
-        string memory idolGroup,
-        string memory member,
-        string memory cardNumber,
-        uint256 listPrice,
-        string memory photoURI
-    ) external returns (string memory);
 }
 
 // TradeManager 介面
@@ -144,12 +143,26 @@ contract IdolCardSystem {
         return cardManager.getUserCards(user);
     }
 
-    function purchaseSpecificCard(
-        string memory uid,
-        address recipient
-    ) external payable returns (string memory) {
-        return
-            cardManager.purchaseSpecificCard{value: msg.value}(uid, recipient);
+    function createCardType(
+        string memory idolGroup,
+        string memory member,
+        string memory baseCardNumber,
+        string memory photoURI,
+        uint256 listPrice,
+        uint256 stock
+    ) external onlyOwner returns (string memory) {
+        return cardManager.createCardType(
+            idolGroup,
+            member,
+            baseCardNumber,
+            photoURI,
+            listPrice,
+            stock
+        );
+    }
+
+    function purchaseCardType(string memory uid) external payable returns (uint256) {
+        return cardManager.purchaseCardType{value: msg.value}(uid);
     }
 
     function bindCardUID(string memory uid, address recipient) external {
@@ -172,24 +185,7 @@ contract IdolCardSystem {
         cardManager.rejectTransfer(uid);
     }
 
-    function setCardPrice(
-        uint256 newPrice,
-        string memory idolGroup,
-        string memory member,
-        string memory cardNumber,
-        uint256 listPrice,
-        string memory photoURI
-    ) external onlyOwner returns (string memory) {
-        return
-            cardManager.setCardPrice(
-                newPrice,
-                idolGroup,
-                member,
-                cardNumber,
-                listPrice,
-                photoURI
-            );
-    }
+    
 
     // 交易相關功能轉發
     function createTrade(string memory uid, uint256 price) external {
