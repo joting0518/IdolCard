@@ -852,7 +852,7 @@
         const unsoldUserCards = userCards.filter(card => !resaleUIDs.has(card.uid));
 
         if (unsoldUserCards.length > 0) {
-          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>操作</th></tr>';
+          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>圖片</th><th>操作</th></tr>';
 
           for (const card of unsoldUserCards) {
             cardsHTML += `
@@ -861,6 +861,7 @@
           <td>${card.idolGroup}</td>
           <td>${card.member}</td>
           <td>${card.cardNumber}</td>
+          <td>${card.photoURI}</td>
           <td>
             <button onclick="viewCardDetails('${card.uid}')">查看詳情</button>
           </td>
@@ -1073,7 +1074,7 @@
 
         // 顯示「已上架」卡片在表格中
         if (listedCards.length > 0) {
-          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>操作</th></tr>';
+          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>圖片</th><th>操作</th></tr>';
 
           for (const card of listedCards) {
             cardsHTML += `
@@ -1082,7 +1083,8 @@
           <td>${card.idolGroup}</td>
           <td>${card.member}</td>
           <td>${card.cardNumber}</td>
-          <td><button onclick="viewCardDetails('${card.uid}')">查看詳情</button></td>
+          <td>${card.photoURI}</td>
+          <td><button onclick="viewCardDetails('${card.uid}')">查看詳情1</button></td>
         </tr>
         `;
           }
@@ -1428,7 +1430,7 @@
         console.log("可用卡片:", availableCards);
 
         if (availableCards && availableCards.length > 0) {
-          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>價格</th><th>操作</th></tr>';
+          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>價格</th><th>圖片</th><th>操作</th></tr>';
 
           for (const card of availableCards) {
             if (card.isSold) continue;
@@ -1510,6 +1512,14 @@
 
         // 取得目前用戶擁有的卡片 UID（防止買到自己卡片）
         const userCards = await contract.getUserCards(userAccount);
+        for (const card of userCards) {
+          console.log(card.uid);         
+          console.log(card.idolGroup);  
+          console.log(card.member);     
+          console.log(card.cardNumber); 
+          console.log(card.listPrice);
+          console.log(card.photoURI);
+        }
         const ownedUIDs = new Set(userCards.map(card => card.uid));
 
         // 呼叫合約中的 getResaleCards()
@@ -1523,15 +1533,16 @@
         });
 
         if (filteredResaleCards.length > 0) {
-          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>價格</th><th>操作</th></tr>';
-
+          let cardsHTML = '<table><tr><th>卡片UID</th><th>團體</th><th>成員</th><th>編號</th><th>價格</th><th>圖片</th><th>操作</th></tr>';
+          
+          console.log("卡片欄位",filteredResaleCards)
           for (const card of filteredResaleCards) {
-            const uid = card[0];
-            const idolGroup = card[1];
-            const member = card[2];
-            const cardNumber = card[3];
+            const uid = card.uid;
+            const idolGroup = card.idolGroup;
+            const member = card.member;
+            const cardNumber = card.cardNumber;
             const listPrice = card[4];
-            const photoURI = card[5];
+            const photoURI = card.photoURI;
             const isSold = card[6];
 
             const priceEth = ethers.utils.formatEther(listPrice.toString());
@@ -1544,6 +1555,7 @@
             <td>${member}</td>
             <td>${cardNumber}</td>
             <td>${priceEth} ETH</td>
+            <td>${photoURI}</td>
             <td><button onclick="buyResaleCard('${uid}', '${listPrice}')">購買</button></td>
           </tr>
         `;

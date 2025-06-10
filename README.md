@@ -10,6 +10,7 @@ Private Key: 0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e
 # step 2
 npm install --save-dev hardhat
 npm install @nomicfoundation/hardhat-toolbox
+npm install @openzeppelin/contracts
 npx hardhat node #相當於 avail 的功能，執行在另外的 terminal
 （如果出現 permission deny 則執行 rm -rf node_modules package-lock.json 然後重新執行） 
 npx hardhat compile #先 compile (如果出現錯誤或是修改功能後要重新生成合約，可以先執行 npx hardhat clean)

@@ -433,8 +433,13 @@ contract CardManager is NFTBase {
     ) external {
         require(!isResaleListed[uid], "Already listed");
 
-        // 更新卡片的價格
-        uidToCardInfo[uid].listPrice = resalePrice;
+        CardInfo storage card = uidToCardInfo[uid];
+
+        require(bytes(card.idolGroup).length > 0, "Card info missing");
+        require(card.listPrice > 0, "Invalid card");
+
+        // 更新卡片價格
+        card.listPrice = resalePrice;
 
         resaleCardUIDs.push(uid);
         isResaleListed[uid] = true;
@@ -455,7 +460,8 @@ contract CardManager is NFTBase {
         for (uint256 i = 0; i < resaleCardUIDs.length; i++) {
             string memory uid = resaleCardUIDs[i];
             if (isResaleListed[uid]) {
-                CardInfo memory info = uidToCardInfo[uid];
+                uint256 tokenId = uidToTokenId[uid];
+                CardInfo memory info = tokenIdToCardInfo[tokenId]; 
                 cards[index] = CardDisplay({
                     uid: uid,
                     idolGroup: info.idolGroup,
