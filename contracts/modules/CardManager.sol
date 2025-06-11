@@ -80,6 +80,7 @@ contract CardManager is NFTBase {
         string photoURI
     );
     event CardRequestRejected(string uid, address buyer);
+    event ResaleCancelled(string uid, address owner);
 
     function setCardPrice(
         uint256 newPrice,
@@ -520,5 +521,31 @@ contract CardManager is NFTBase {
         }
 
         emit CardPurchased(recipient, price, uid);
+        uidToTokenId[uid] = tokenId;
+        tokenIdToUID[tokenId] = uid;
     }
+    function cancelResale(string memory uid) external {
+
+        // uint256 tokenId = uidToTokenId[uid];
+        // require(tokenId != 0, "Invalid token ID");
+        // require(ownerOf(tokenId) == msg.sender, "Only card owner can cancel resale");
+        // 取消上架狀態
+        isResaleListed[uid] = false;
+
+        // 從 resaleCardUIDs array 中移除
+        for (uint256 i = 0; i < resaleCardUIDs.length; i++) {
+            if (
+                keccak256(abi.encodePacked(resaleCardUIDs[i])) ==
+                keccak256(abi.encodePacked(uid))
+            ) {
+                // 將最後一個元素換到當前位置，然後 pop()
+                resaleCardUIDs[i] = resaleCardUIDs[resaleCardUIDs.length - 1];
+                resaleCardUIDs.pop();
+                break;
+            }
+        }
+
+        emit ResaleCancelled(uid, msg.sender); // 可選事件
+    }
+
 }

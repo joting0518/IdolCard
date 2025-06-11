@@ -1293,6 +1293,7 @@
         "function listCardForResale(string uid, uint256 price) external",
         "function getNFTHolder(string memory uid) external view returns (address)",
         "function getResaleCards() external view returns (tuple(string uid, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI, bool isSold)[])",
+        "function cancelResale(string uid) external",
 
         // TradeManager 相關函式
         "function tradeManager() view returns (address)",
@@ -2163,26 +2164,20 @@
 
           myCardsDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
 
-          // 清空下拉選單
-          while (cardToSell.options.length > 1) {
-            cardToSell.remove(1);
-          }
-
+          // 1. 載入自己擁有的 NFT
           const userCards = await contract.getUserCards(userAccount);
+          // 2. 載入已上架的 UID
           const resaleCards = await contract.getResaleCards();
-          const resaleUIDs = new Set(resaleCards.map(card => card[0]));
-
-          const listedCards = userCards.filter(card => resaleUIDs.has(card.uid));
-          const unlistedCards = userCards.filter(card => !resaleUIDs.has(card.uid));
+          const resaleUIDs = new Set(resaleCards.map(c => c.uid));
 
           // 顯示已上架的卡片
-          if (listedCards.length > 0) {
-            let cardsHTML = '';
-
-            for (const card of listedCards) {
+          const listed = userCards.filter(c => resaleUIDs.has(c.uid));
+          let cardsHTML='';
+          if (listed.length) {
+            for (const card of listed) {
               const shortUID = `${card.uid.slice(0, 10)}...${card.uid.slice(-6)}`;
               const priceEth = ethers.utils.formatEther(card.listPrice);
-
+              
               cardsHTML += `
               <div class="idol-card">
                 <div class="idol-card-image">
@@ -2196,11 +2191,11 @@
                   <div class="idol-card-info">
                     <div>卡片編號: ${card.cardNumber}</div>
                     <div>UID: ${shortUID}</div>
-                    <div style="color: var(--warning-color); font-weight: 600;">🔄 上架中</div>
+                    <div style="color: var(--warning-color); font-weight: 600;">上架中</div>
                   </div>
                   <div class="idol-card-price">${priceEth} ETH</div>
                   <div class="idol-card-actions">
-                    <button onclick="viewCardDetails('${card.uid}')">查看詳情</button>
+                    <button onclick="cancelResaleCard('${card.uid}')">取消上架</button>
                   </div>
                 </div>
               </div>
@@ -2213,11 +2208,14 @@
           }
 
           // 將未上架卡片加到下拉選單
-          for (const card of unlistedCards) {
-            const option = document.createElement('option');
-            option.value = card.uid;
-            option.textContent = `${card.idolGroup} - ${card.member} (${card.cardNumber})`;
-            cardToSell.appendChild(option);
+          // 清空下拉選單
+          while (cardToSell.options.length > 1) cardToSell.remove(1);
+          const unlisted = userCards.filter(c => !resaleUIDs.has(c.uid));
+          for (const c of unlisted) {
+            const opt = document.createElement('option');
+            opt.value = c.uid;
+            opt.textContent = `${c.idolGroup} - ${c.member} (#${c.cardNumber})`;
+            cardToSell.appendChild(opt);
           }
         } catch (error) {
           console.error("載入第二手賣家卡片失敗:", error);
@@ -2451,7 +2449,31 @@
           document.getElementById('available-trades-second').innerHTML = '<p class="error">載入交易失敗。</p>';
         }
       }
+      async function fetchResaleStatus(uid) {
+        const resaleCards = await contract.getResaleCards();
+        // getResaleCards 回傳 CardDisplay[]，uid 在每個元素的 .uid 上
+        return resaleCards.some(c => c.uid === uid);
+      }
 
+      window.cancelResaleCard = async function cancelResaleCard(uid) {
+        console.log("你將 cancel 的 uid=", uid);
+        const resaleCards = await contract.getResaleCards();
+        console.log("所有上架UID", resaleCards.map(c => c.uid));
+        if (!confirm(`確定要取消上架卡片 ${uid}... 嗎？`)) return;
+        console.log(`【${uid}】取消前:`, await fetchResaleStatus(uid)); 
+
+        try {
+          const tx = await contract.cancelResale(uid);
+          await tx.wait(); // 等待交易完成
+          
+          console.log(`【${uid}】取消後:`, await fetchResaleStatus(uid)); // false
+          alert('卡片取消上架成功');
+          loadMyCardsSecond(); // 重新載入 UI
+        } catch (err) {
+          console.error('取消上架失敗:', err);
+          alert('取消上架失敗，請查看 console log');
+        }
+      }
       // 載入我的交易管理 - 使用現代表格樣式
       async function loadMyTradesSecond() {
         try {
@@ -2613,7 +2635,7 @@
           console.log("價格(Wei):", priceWei);
 
           // 清理和驗證 UID - 移除可能的特殊字符
-          const cleanUID = uid.trim();
+          // const cleanUID = uid.trim();
 
           let valueForTx;
           try {
@@ -2641,23 +2663,26 @@
           }
 
           console.log("接收者錢包地址:", signerAddress);
-          console.log("清理後的 UID:", cleanUID);
+          // console.log("清理後的 UID:", cleanUID);
+          console.log("傳入 UID:", uid);
 
           // 使用更大的 gas limit 以避免交易失敗
           const gasLimit = 800000;
 
           try {
-            const returnedUidCheck = await contract.callStatic.purchaseSpecificCard(cleanUID, signerAddress, {
+            const returnedUidCheck = await contract.callStatic.purchaseSpecificCard(uid, signerAddress, {
               value: valueForTx,
               gasLimit: gasLimit,
             });
             console.log("模擬成功，返回UID:", returnedUidCheck);
           } catch (staticError) {
+            const reason = ethers.utils.toUtf8String("0x" + err.data.substr(138));
+            console.error("合约回退原因：", reason);
             console.warn("模擬失敗，可能交易會 revert:", staticError);
             // 不要直接返回，繼續嘗試實際交易
           }
 
-          const tx = await contract.purchaseSpecificCard(cleanUID, signerAddress, {
+          const tx = await contract.purchaseSpecificCard(uid, signerAddress, {
             value: valueForTx,
             gasLimit: gasLimit,
           });
@@ -2667,10 +2692,10 @@
           console.log("交易確認:", receipt);
 
           try {
-            const tokenId = await contract.uidToTokenId(cleanUID);
+            const tokenId = await contract.uidToTokenId(uid);
             console.log("對應 tokenId:", tokenId.toString());
 
-            const tx2 = await contract.recordPrimaryTrade(cleanUID, tokenId, signerAddress, valueForTx);
+            const tx2 = await contract.recordPrimaryTrade(uid, tokenId, signerAddress, valueForTx);
             await tx2.wait();
             console.log("✅ 一手交易已記錄到 TradeManager");
           } catch (e) {
@@ -2687,7 +2712,7 @@
 
           const cardUidInput = document.getElementById('card-uid');
           if (cardUidInput) {
-            cardUidInput.value = cleanUID;
+            cardUidInput.value = uid;
           }
 
           await loadAvailableCardsMarket();
