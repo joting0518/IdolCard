@@ -49,22 +49,17 @@ contract TradeManager is NFTBase {
     uint256 public tradeCounter;
     mapping(uint256 => Trade) public trades;
     mapping(uint256 => uint256) public tokenToTrade;
-
-    // 👉 若使用 UID 建立交易，需要這兩個來自 CardManager（或主合約）
     mapping(string => uint256) public uidToTokenId;
-    event TradeCreated(
-        uint256 tradeId,
-        uint256 tokenId,
-        address seller,
-        uint256 price
-    );
+    mapping(string => uint256[]) internal uidToTradeIds;
+
+    event TradeCreated(uint256 tradeId, uint256 tokenId, address seller, uint256 price);
     event BuyerSigned(uint256 tradeId, address buyer);
     event SellerSigned(uint256 tradeId);
     event RefundRequested(uint256 tradeId);
     event Refunded(uint256 tradeId);
     event TradeCompleted(uint256 tradeId);
-    mapping(string => uint256[]) internal uidToTradeIds;
 
+    // 創建新的交易訂單，將NFT上架銷售
     function createTrade(string memory uid, uint256 price) external {
         require(uidUsed[uid], "UID not bound");
         uint256 tokenId = uidToTokenId[uid];
@@ -86,6 +81,7 @@ contract TradeManager is NFTBase {
         emit TradeCreated(tradeId, tokenId, msg.sender, price);
     }
 
+    // 設定UID的使用狀態
     function setUidUsed(
         string memory uid,
         bool used
@@ -93,6 +89,7 @@ contract TradeManager is NFTBase {
         uidUsed[uid] = used;
     }
 
+    // 買家支付ETH並簽署購買意願
     function buyerSign(uint256 tradeId) external payable {
         Trade storage t = trades[tradeId];
         require(t.status == TradeStatus.Created, "Trade not available");
@@ -105,18 +102,19 @@ contract TradeManager is NFTBase {
         emit BuyerSigned(tradeId, msg.sender);
     }
 
+    // 賣家確認交易並轉移NFT給買家
     function sellerSign(uint256 tradeId) external {
         Trade storage t = trades[tradeId];
         require(msg.sender == t.seller, "Only seller");
         require(t.status == TradeStatus.BuyerSigned, "Buyer not signed");
 
-        // NFT 從合約轉移給買家
         safeTransferFrom(address(this), t.buyer, t.tokenId);
         t.status = TradeStatus.SellerSigned;
 
         emit SellerSigned(tradeId);
     }
 
+    // 買家申請退款
     function requestRefund(uint256 tradeId) external {
         Trade storage t = trades[tradeId];
         require(msg.sender == t.buyer, "Only buyer");
@@ -126,6 +124,7 @@ contract TradeManager is NFTBase {
         emit RefundRequested(tradeId);
     }
 
+    // 賣家確認退款並收回NFT
     function confirmRefund(uint256 tradeId) external {
         Trade storage t = trades[tradeId];
         require(msg.sender == t.seller, "Only seller");
@@ -138,6 +137,7 @@ contract TradeManager is NFTBase {
         emit Refunded(tradeId);
     }
 
+    // 完成交易，將ETH轉給賣家
     function finalize(uint256 tradeId) external {
         Trade storage t = trades[tradeId];
         require(
@@ -152,6 +152,7 @@ contract TradeManager is NFTBase {
         emit TradeCompleted(tradeId);
     }
 
+    // 獲取指定用戶相關的所有交易記錄
     function getUserTrades(
         address user
     ) external view returns (Trade[] memory) {
@@ -170,6 +171,7 @@ contract TradeManager is NFTBase {
         return result;
     }
 
+    // 獲取交易統計數據（總數、完成數、進行中、總交易額）
     function getTradeAnalytics()
         external
         view
@@ -202,6 +204,7 @@ contract TradeManager is NFTBase {
         return (tradeCounter, _completed, _pending, _volume);
     }
 
+    // 獲取所有可購買的交易訂單
     function getAvailableTrades() external view returns (Trade[] memory) {
         uint count = 0;
         for (uint i = 1; i <= tradeCounter; i++) {
@@ -218,6 +221,7 @@ contract TradeManager is NFTBase {
         return result;
     }
 
+    // 獲取指定交易的詳細資訊
     function getTrade(
         uint256 tradeId
     )
@@ -242,7 +246,8 @@ contract TradeManager is NFTBase {
             t.timestamp + 3 days
         );
     }
-    //new
+
+    // 記錄一手交易（公司銷售給用戶）
     function recordPrimaryTrade(
         string memory uid,
         uint256 tokenId,
@@ -269,10 +274,11 @@ contract TradeManager is NFTBase {
         emit TradeCompleted(tradeId);
     }
 
+    // 記錄二手交易（用戶之間的交易）
     function recordSecondaryTrade(
         string memory uid,
         uint256 tokenId,
-        address seller, // 使用傳入的賣家地址
+        address seller,
         address buyer,
         uint256 price
     ) external {
@@ -281,7 +287,7 @@ contract TradeManager is NFTBase {
         trades[tradeId] = Trade({
             tradeId: tradeId,
             tokenId: tokenId,
-            seller: payable(seller), // 使用傳入的賣家地址
+            seller: payable(seller), 
             buyer: payable(buyer),
             price: price,
             timestamp: block.timestamp,
@@ -296,6 +302,7 @@ contract TradeManager is NFTBase {
         emit TradeCompleted(tradeId);
     }
 
+    // 獲取指定UID的所有交易歷史記錄
     function getTradesByUID(
         string memory uid
     ) public view returns (Trade[] memory) {
@@ -312,6 +319,8 @@ contract TradeManager is NFTBase {
 
         return result;
     }
+
+    // 設定UID對應的TokenID
     function setUidToTokenId(
         string memory uid,
         uint256 tokenId
