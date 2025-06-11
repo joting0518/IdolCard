@@ -112,8 +112,9 @@ contract CardManager is NFTBase {
         // 要發行 amount 張卡
         for (uint256 i = 0; i < amount; i++) {
             // 拼接流水編號
-            string memory numberedUID = string(abi.encodePacked(baseUID, "-", Strings.toString(i + 1)));
-
+            string memory numberedUID = string(
+                abi.encodePacked(baseUID, "-", Strings.toString(i + 1))
+            );
 
             require(!cardUIDUsed[numberedUID], "UID already used");
 
@@ -460,16 +461,15 @@ contract CardManager is NFTBase {
         for (uint256 i = 0; i < resaleCardUIDs.length; i++) {
             string memory uid = resaleCardUIDs[i];
             if (isResaleListed[uid]) {
-                uint256 tokenId = uidToTokenId[uid];
-                CardInfo memory info = tokenIdToCardInfo[tokenId]; 
+                CardInfo memory info = uidToCardInfo[uid];
                 cards[index] = CardDisplay({
                     uid: uid,
                     idolGroup: info.idolGroup,
                     member: info.member,
                     cardNumber: info.cardNumber,
-                    listPrice: info.listPrice,
+                    listPrice: info.listPrice, 
                     photoURI: info.photoURI,
-                    isSold: false // 二手交易的卡片不再是已售出狀態
+                    isSold: false
                 });
                 index++;
             }
