@@ -1300,7 +1300,7 @@ h1::after {
     <script type="module">
       import { initEthers, signer } from './js/ethers-init.js';
 
-      // 合約 ABI (根據實際合約調整)
+      // 合約 ABI 
       const contractABI = [
         "function owner() external view returns (address)",
         "event CardPurchased(address indexed buyer, uint256 amount, string uid)",
@@ -1353,6 +1353,8 @@ h1::after {
       let contractAddress;
       let cardManagerAddress;
       let tradeManagerAddress;
+      let currentRole = 'company';
+
 
       
       // DOM 載入完成後執行
@@ -1390,7 +1392,6 @@ h1::after {
           btn.disabled = true;
         });
 
-        // 各角色功能按鈕事件
         // 公司角色
         document.getElementById('set-price-btn').addEventListener('click', setCardPrice);
 
@@ -1419,8 +1420,6 @@ h1::after {
         }
       });
 
-      // 當前選擇的角色
-      let currentRole = 'company';
 
       // 切換角色
       function switchRole(role) {
@@ -1454,7 +1453,6 @@ h1::after {
           });
         }
 
-        // 如果錢包已連接，重新載入對應角色的數據
         if (contract && userAccount) {
           loadRoleSpecificData(role);
         }
@@ -1593,7 +1591,7 @@ h1::after {
         }
       }
 
-      // 載入可購買卡片市場 - 修改為現代卡片樣式
+      // 載入可購買卡片市場 
       async function loadAvailableCardsMarket() {
         const marketDiv = document.getElementById('available-cards-market');
 
@@ -1647,7 +1645,7 @@ h1::after {
         }
       }
 
-      // 載入轉售卡片市場 - 修改為現代卡片樣式
+      // 載入轉售卡片市場
       async function loadResaleCardsMarket() {
         const resaleDiv = document.getElementById('resale-cards-market');
 
@@ -1721,6 +1719,7 @@ h1::after {
         }
       }
 
+      // 載入轉售過往交易紀錄
       async function loadHistoryRecords() {
         try {
           // 初始化 cardManagerContract
@@ -1751,7 +1750,7 @@ h1::after {
           historyDiv.style.display = 'block';
           historyDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
 
-          const fromBlock = 0; // 拉全歷史
+          const fromBlock = 0; 
 
           let records = [];
 
@@ -1802,7 +1801,7 @@ h1::after {
         }
       }
 
-      // 處理公司事件（簡化版）
+      // 處理公司事件
       async function processCompanyEventsSimple(records, purchaseEvents, approveEvents) {
         // 建立 UID 到購買歷史的映射（公司視角）
         const uidPurchaseHistory = {};
@@ -1895,7 +1894,7 @@ h1::after {
         }
       }
 
-      // 處理用戶事件（簡化版）
+      // 處理用戶事件
       async function processUserEventsSimple(records, allPurchaseEvents, approveEvents) {
         // 建立 UID 到購買歷史的映射
         const uidPurchaseHistory = {};
@@ -2057,11 +2056,11 @@ h1::after {
           return earliestPurchase.blockNumber === currentBlockNumber;
         } catch (error) {
           console.warn("檢查首次購買失敗:", error);
-          return true; // 預設為首次購買
+          return true; 
         }
       }
 
-      // 顯示歷史記錄（簡化版）
+      // 顯示歷史記錄
       function displayHistoryRecordsSimple(historyDiv, records) {
         if (records.length > 0) {
           console.log("📚 records length", records.length);
@@ -2137,7 +2136,7 @@ h1::after {
           console.log('⚠️ 沒有任何歷史紀錄');
         }
       }
-      // 載入我的卡片 - 修改為現代卡片樣式
+      // 載入我的卡片 
       async function loadMyCardsFirst() {
         try {
           const myCardsDiv = document.getElementById('my-cards-list-first');
@@ -2190,7 +2189,7 @@ h1::after {
         }
       }
 
-      // 載入我的上架卡片 - 修改為現代卡片樣式
+      // 載入我的上架卡片 
       async function loadMyCardsSecond() {
         try {
           const myCardsDiv = document.getElementById('my-cards-list-second');
@@ -2198,20 +2197,18 @@ h1::after {
 
           myCardsDiv.innerHTML = '<p>載入中... <div class="loader"></div></p>';
 
-          // 1. 載入自己擁有的 NFT
           const userCards = await contract.getUserCards(userAccount);
-          // 2. 載入已上架的 UID
           const resaleCards = await contract.getResaleCards();
           const resaleUIDs = new Set(resaleCards.map(c => c.uid));
 
           // 顯示已上架的卡片
           const listed = userCards.filter(c => resaleUIDs.has(c.uid));
-          let cardsHTML='';
+          let cardsHTML = '';
           if (listed.length) {
             for (const card of listed) {
               const shortUID = `${card.uid.slice(0, 10)}...${card.uid.slice(-6)}`;
               const priceEth = ethers.utils.formatEther(card.listPrice);
-              
+
               cardsHTML += `
               <div class="idol-card">
                 <div class="idol-card-image">
@@ -2257,7 +2254,7 @@ h1::after {
         }
       }
 
-      // 載入卡片統計 - 使用現代表格樣式
+      // 載入卡片統計 
       async function loadCardStats() {
         try {
           const statsDiv = document.getElementById('card-stats');
@@ -2299,7 +2296,7 @@ h1::after {
         }
       }
 
-      // 載入待審批請求 - 使用現代表格樣式
+      // 載入待審批請求 
       async function loadPendingRequests() {
         if (!isOwner) {
           document.getElementById('pending-requests').innerHTML = '<p>只有合約擁有者可查看待處理請求。</p>';
@@ -2347,7 +2344,7 @@ h1::after {
         }
       }
 
-      // 載入可用交易 - 使用現代表格樣式
+      // 載入可用交易 
       async function loadAvailableTradesFirst() {
         try {
           const tradesDiv = document.getElementById('available-trades-first');
@@ -2384,7 +2381,7 @@ h1::after {
         }
       }
 
-      // 載入我的銷售 - 使用現代表格樣式
+      // 載入我的銷售 
       async function loadMySalesFirst() {
         try {
           const salesDiv = document.getElementById('my-sales-first');
@@ -2485,7 +2482,6 @@ h1::after {
       }
       async function fetchResaleStatus(uid) {
         const resaleCards = await contract.getResaleCards();
-        // getResaleCards 回傳 CardDisplay[]，uid 在每個元素的 .uid 上
         return resaleCards.some(c => c.uid === uid);
       }
 
@@ -2494,21 +2490,21 @@ h1::after {
         const resaleCards = await contract.getResaleCards();
         console.log("所有上架UID", resaleCards.map(c => c.uid));
         if (!confirm(`確定要取消上架卡片 ${uid}... 嗎？`)) return;
-        console.log(`【${uid}】取消前:`, await fetchResaleStatus(uid)); 
+        console.log(`【${uid}】取消前:`, await fetchResaleStatus(uid));
 
         try {
           const tx = await contract.cancelResale(uid);
-          await tx.wait(); // 等待交易完成
-          
-          console.log(`【${uid}】取消後:`, await fetchResaleStatus(uid)); // false
+          await tx.wait(); 
+
+          console.log(`【${uid}】取消後:`, await fetchResaleStatus(uid)); 
           alert('卡片取消上架成功');
-          loadMyCardsSecond(); // 重新載入 UI
+          loadMyCardsSecond(); 
         } catch (err) {
           console.error('取消上架失敗:', err);
           alert('取消上架失敗，請查看 console log');
         }
       }
-      // 載入我的交易管理 - 使用現代表格樣式
+      // 載入我的交易管理 
       async function loadMyTradesSecond() {
         try {
           const tradesDiv = document.getElementById('my-trades-second');
@@ -2668,9 +2664,6 @@ h1::after {
           console.log("準備購買卡片:", uid);
           console.log("價格(Wei):", priceWei);
 
-          // 清理和驗證 UID - 移除可能的特殊字符
-          // const cleanUID = uid.trim();
-
           let valueForTx;
           try {
             valueForTx = ethers.BigNumber.from(priceWei);
@@ -2713,7 +2706,6 @@ h1::after {
             const reason = ethers.utils.toUtf8String("0x" + err.data.substr(138));
             console.error("合约回退原因：", reason);
             console.warn("模擬失敗，可能交易會 revert:", staticError);
-            // 不要直接返回，繼續嘗試實際交易
           }
 
           const tx = await contract.purchaseSpecificCard(uid, signerAddress, {
@@ -2950,7 +2942,7 @@ h1::after {
         }
       }
 
-      // 購買卡片 (市場交易)
+      // 購買卡片 
       async function buyCard(tradeId, price) {
         try {
           await contract.buyerSign(tradeId, { value: price });

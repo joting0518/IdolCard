@@ -12,6 +12,7 @@ contract CardManager is NFTBase {
         string memory symbol_,
         address initialOwner
     ) NFTBase(name_, symbol_, initialOwner) {}
+
     modifier onlyOwnerOrMainContract() {
         require(
             msg.sender == owner() || msg.sender == mainContract,
@@ -28,6 +29,7 @@ contract CardManager is NFTBase {
     }
 
     using StringUtils for bytes32;
+
     struct CardInfo {
         string idolGroup;
         string member;
@@ -41,7 +43,7 @@ contract CardManager is NFTBase {
         uint256 amount;
         bool approved;
     }
-    // 1. 獲取公司上架的所有卡片
+
     struct CardDisplay {
         string uid;
         string idolGroup;
@@ -52,8 +54,15 @@ contract CardManager is NFTBase {
         bool isSold;
     }
 
-    CardInfo public defaultCardInfo;
+    struct PendingRequest {
+        string uid;
+        address buyer;
+        uint256 amount;
+        uint256 timestamp;
+    }
 
+    CardInfo public defaultCardInfo;
+    
     mapping(string => uint256) private uidToTokenId;
     mapping(uint256 => string) private tokenIdToUID;
     mapping(string => bool) public cardUIDUsed;
@@ -62,8 +71,9 @@ contract CardManager is NFTBase {
     mapping(string => uint256) public requestTimestamps;
     mapping(uint256 => CardInfo) public tokenIdToCardInfo;
     mapping(address => uint256) public prepaidAmount;
-    // 新增：NFT 階段狀態，1=未購買，2=已購買未綁定，3=已購買已綁定
+    // NFT 階段狀態，1=未購買，2=已購買未綁定，3=已購買已綁定
     mapping(uint256 => uint8) public phase;
+    
     string[] public allCardUIDs;
     string[] public resaleCardUIDs;
     mapping(string => bool) public isResaleListed;
@@ -71,17 +81,11 @@ contract CardManager is NFTBase {
     event CardPurchased(address indexed buyer, uint256 amount, string uid);
     event CardRequested(address indexed buyer, string uid);
     event CardApproved(string uid, address indexed buyer, uint256 tokenId);
-    event CardInfoUpdatedWithUID(
-        string uid,
-        string idolGroup,
-        string member,
-        string cardNumber,
-        uint256 listPrice,
-        string photoURI
-    );
+    event CardInfoUpdatedWithUID(string uid, string idolGroup, string member, string cardNumber, uint256 listPrice, string photoURI);
     event CardRequestRejected(string uid, address buyer);
     event ResaleCancelled(string uid, address owner);
 
+    // 設定卡片價格並批量發行指定數量的卡片
     function setCardPrice(
         uint256 newPrice,
         string memory idolGroup,
@@ -94,7 +98,6 @@ contract CardManager is NFTBase {
         require(amount > 0, "Amount must be greater than 0");
         cardPrice = newPrice;
 
-        // 產生基礎 UID
         bytes32 hash = keccak256(
             abi.encodePacked(
                 idolGroup,
@@ -110,9 +113,7 @@ contract CardManager is NFTBase {
 
         string[] memory generatedUIDs = new string[](amount);
 
-        // 要發行 amount 張卡
         for (uint256 i = 0; i < amount; i++) {
-            // 拼接流水編號
             string memory numberedUID = string(
                 abi.encodePacked(baseUID, "-", Strings.toString(i + 1))
             );
@@ -130,7 +131,6 @@ contract CardManager is NFTBase {
             uidToCardInfo[numberedUID] = newCardInfo;
             cardUIDUsed[numberedUID] = true;
             allCardUIDs.push(numberedUID);
-
             generatedUIDs[i] = numberedUID;
 
             emit CardInfoUpdatedWithUID(
@@ -143,7 +143,6 @@ contract CardManager is NFTBase {
             );
         }
 
-        // 只設定最後一張卡作為 defaultCardInfo（你如果希望就留，不希望可移除）
         defaultCardInfo = CardInfo(
             idolGroup,
             member,
@@ -152,11 +151,15 @@ contract CardManager is NFTBase {
             photoURI
         );
 
-        return generatedUIDs; // 返回所有生成的UID，前端可以一次拿回來
+        return generatedUIDs;
     }
+
+    // 獲取當前卡片價格
     function getCardPrice() external view returns (uint256) {
         return cardPrice;
     }
+
+    // 用戶綁定實體卡片UID到已擁有的NFT
     function bindUID(string memory uid) external {
         require(!uidUsed[uid], "UID already bound");
 
@@ -167,9 +170,10 @@ contract CardManager is NFTBase {
 
         uidUsed[uid] = true;
         tokenIdToUID[tokenId] = uid;
-        phase[tokenId] = 3; // 設為已購買已綁定
+        phase[tokenId] = 3;
     }
 
+    // 管理員審批用戶的卡片綁定請求
     function approveTransfer(
         string memory uid
     ) external onlyOwnerOrMainContract {
@@ -185,12 +189,10 @@ contract CardManager is NFTBase {
         uint256 tokenId = nextTokenId;
         _safeMint(buyer, tokenId);
 
-        // 設定卡片的 URI 和資訊
         if (bytes(defaultCardInfo.photoURI).length > 0) {
             _setTokenURI(tokenId, defaultCardInfo.photoURI);
         }
 
-        // 將預設卡片資訊指派給新發行的代幣
         tokenIdToCardInfo[tokenId] = defaultCardInfo;
 
         uidUsed[uid] = true;
@@ -203,6 +205,8 @@ contract CardManager is NFTBase {
 
         emit CardApproved(uid, buyer, tokenId);
     }
+
+    // 管理員拒絕用戶的卡片綁定請求並退款
     function rejectTransfer(
         string memory uid
     ) external onlyOwnerOrMainContract {
@@ -212,15 +216,15 @@ contract CardManager is NFTBase {
         address buyer = pendingTransfers[uid].buyer;
         uint256 amount = pendingTransfers[uid].amount;
 
-        // 退還購買費用
         payable(buyer).transfer(amount);
 
-        // 清除請求記錄
         delete pendingTransfers[uid];
         delete requestTimestamps[uid];
 
         emit CardRequestRejected(uid, buyer);
     }
+
+    // 獲取指定TokenID的卡片詳細資訊
     function getCardInfo(
         uint256 tokenId
     )
@@ -243,6 +247,8 @@ contract CardManager is NFTBase {
             info.photoURI
         );
     }
+
+    // 獲取公司發行的所有卡片清單（含售出狀態）
     function getCompanyCards() external view returns (CardDisplay[] memory) {
         uint256 count = allCardUIDs.length;
         CardDisplay[] memory cards = new CardDisplay[](count);
@@ -265,14 +271,14 @@ contract CardManager is NFTBase {
 
         return cards;
     }
-    // 2. 獲取所有可購買的卡片
+
+    // 獲取所有可購買的一手卡片清單
     function getAvailableCards() external view returns (CardDisplay[] memory) {
         uint256 availableCount = 0;
 
         for (uint256 i = 0; i < allCardUIDs.length; i++) {
             string memory uid = allCardUIDs[i];
             uint256 tokenId = uidToTokenId[uid];
-            // 如果還沒鑄造 NFT (tokenId == 0)，該卡可買
             if (tokenId == 0) {
                 availableCount++;
             }
@@ -301,7 +307,7 @@ contract CardManager is NFTBase {
         return availableCards;
     }
 
-    // 3. 購買特定卡片並返回UID
+    // 用戶購買指定UID的一手卡片
     function purchaseSpecificCard(
         string memory uid,
         address recipient
@@ -312,7 +318,6 @@ contract CardManager is NFTBase {
         CardInfo memory info = uidToCardInfo[uid];
         require(msg.value == info.listPrice, "Incorrect payment amount");
 
-        // 使用呼叫者傳入的recipient作為NFT接收地址
         uint256 tokenId = nextTokenId;
 
         _safeMint(recipient, tokenId);
@@ -324,13 +329,12 @@ contract CardManager is NFTBase {
         tokenIdToCardInfo[tokenId] = info;
 
         uidToTokenId[uid] = tokenId;
-        tokenIdToUID[tokenId] = uid; // 直接記錄 UID，完成綁定
-        phase[tokenId] = 3; // 已購買已綁定階段
-        uidUsed[uid] = true; // 設為已綁定，防止重複使用
+        tokenIdToUID[tokenId] = uid;
+        phase[tokenId] = 3;
+        uidUsed[uid] = true;
 
         nextTokenId++;
 
-        // 轉ETH給owner
         payable(owner()).transfer(msg.value);
 
         emit CardPurchased(recipient, msg.value, uid);
@@ -339,14 +343,7 @@ contract CardManager is NFTBase {
         return uid;
     }
 
-    // 4. 獲取待處理的卡片綁定請求
-    struct PendingRequest {
-        string uid;
-        address buyer;
-        uint256 amount;
-        uint256 timestamp;
-    }
-
+    // 獲取所有待審批的卡片綁定請求
     function getPendingCardRequests()
         external
         view
@@ -354,7 +351,6 @@ contract CardManager is NFTBase {
     {
         uint256 pendingCount = 0;
 
-        // 計算待處理請求數量
         for (uint256 i = 0; i < allCardUIDs.length; i++) {
             string memory uid = allCardUIDs[i];
             if (
@@ -389,7 +385,8 @@ contract CardManager is NFTBase {
 
         return requests;
     }
-    // 6. 獲取用戶擁有的卡片
+
+    // 獲取指定用戶擁有的所有卡片
     function getUserCards(
         address user
     ) external view returns (CardDisplay[] memory) {
@@ -415,7 +412,7 @@ contract CardManager is NFTBase {
         return userCards;
     }
 
-    // 新增7.用戶自己綁定UID，成功後phase變3且uidUsed設定true
+    // 用戶綁定實體卡片UID到指定接收者的NFT
     function bindUID(string memory uid, address recipient) external {
         require(!uidUsed[uid], "UID already bound");
 
@@ -426,9 +423,10 @@ contract CardManager is NFTBase {
 
         uidUsed[uid] = true;
         tokenIdToUID[tokenId] = uid;
-        phase[tokenId] = 3; // 設為已購買已綁定
+        phase[tokenId] = 3;
     }
-    //二手交易
+
+    // 將擁有的卡片上架到二手市場
     function listCardForResale(
         string memory uid,
         uint256 resalePrice
@@ -440,16 +438,16 @@ contract CardManager is NFTBase {
         require(bytes(card.idolGroup).length > 0, "Card info missing");
         require(card.listPrice > 0, "Invalid card");
 
-        // 更新卡片價格
         card.listPrice = resalePrice;
 
         resaleCardUIDs.push(uid);
         isResaleListed[uid] = true;
     }
+
+    // 獲取所有二手市場上架的卡片
     function getResaleCards() external view returns (CardDisplay[] memory) {
         uint256 count = 0;
 
-        // Count listed cards
         for (uint256 i = 0; i < resaleCardUIDs.length; i++) {
             if (isResaleListed[resaleCardUIDs[i]]) {
                 count++;
@@ -479,13 +477,14 @@ contract CardManager is NFTBase {
         return cards;
     }
 
+    // 獲取指定UID卡片的當前持有者地址
     function getNFTHolder(string memory uid) external view returns (address) {
         uint256 tokenId = uidToTokenId[uid];
         require(tokenId != 0, "Token does not exist");
-        return ownerOf(tokenId); // 返回當前的持有者
+        return ownerOf(tokenId);
     }
 
-    // 二手交易購買功能
+    // 購買二手市場上的卡片
     function purchaseResaleCard(
         string memory uid,
         address recipient
@@ -493,27 +492,22 @@ contract CardManager is NFTBase {
         require(isResaleListed[uid], "Card not for resale");
 
         uint256 tokenId = uidToTokenId[uid];
-        address seller = ownerOf(tokenId); // 原持有者
+        address seller = ownerOf(tokenId);
         uint256 price = uidToCardInfo[uid].listPrice;
 
         require(msg.value == price, "Incorrect payment");
 
-        // 安全轉移NFT
         _transfer(seller, recipient, tokenId);
 
-        // 付款給賣家
         payable(seller).transfer(price);
 
-        // 將卡片從二手市場移除
         isResaleListed[uid] = false;
 
-        // 移除對應的 UID 條目
         for (uint256 i = 0; i < resaleCardUIDs.length; i++) {
             if (
                 keccak256(abi.encodePacked(resaleCardUIDs[i])) ==
                 keccak256(abi.encodePacked(uid))
             ) {
-                // 刪除條目，將後面的項目前移
                 resaleCardUIDs[i] = resaleCardUIDs[resaleCardUIDs.length - 1];
                 resaleCardUIDs.pop();
                 break;
@@ -524,28 +518,22 @@ contract CardManager is NFTBase {
         uidToTokenId[uid] = tokenId;
         tokenIdToUID[tokenId] = uid;
     }
-    function cancelResale(string memory uid) external {
 
-        // uint256 tokenId = uidToTokenId[uid];
-        // require(tokenId != 0, "Invalid token ID");
-        // require(ownerOf(tokenId) == msg.sender, "Only card owner can cancel resale");
-        // 取消上架狀態
+    // 取消二手市場上架的卡片
+    function cancelResale(string memory uid) external {
         isResaleListed[uid] = false;
 
-        // 從 resaleCardUIDs array 中移除
         for (uint256 i = 0; i < resaleCardUIDs.length; i++) {
             if (
                 keccak256(abi.encodePacked(resaleCardUIDs[i])) ==
                 keccak256(abi.encodePacked(uid))
             ) {
-                // 將最後一個元素換到當前位置，然後 pop()
                 resaleCardUIDs[i] = resaleCardUIDs[resaleCardUIDs.length - 1];
                 resaleCardUIDs.pop();
                 break;
             }
         }
 
-        emit ResaleCancelled(uid, msg.sender); // 可選事件
+        emit ResaleCancelled(uid, msg.sender);
     }
-
 }
