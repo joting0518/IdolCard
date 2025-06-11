@@ -66,6 +66,7 @@ interface ICardManager {
         string memory uid,
         address recipient
     ) external payable;
+    function cancelResale(string memory uid) external;
 }
 
 // TradeManager 介面
@@ -316,5 +317,9 @@ contract IdolCardSystem {
     
     function getResaleCards() external view returns (CardDisplay[] memory) {
         return cardManager.getResaleCards();
+    }
+
+     function cancelResale(string memory uid) external {
+        cardManager.cancelResale(uid);
     }
 }
